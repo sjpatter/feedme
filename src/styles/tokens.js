@@ -1,0 +1,42 @@
+export const C = {
+  bg: "#F7F7F7",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFAFA",
+  border: "#E8E8E8",
+  borderMid: "#D4D4D4",
+  text: "#111111",
+  textSecondary: "#555555",
+  textTertiary: "#999999",
+  primary: "#A8432A",
+  primaryDark: "#8C3622",
+  primaryLight: "#FDF0EC",
+  primaryMid: "#E8A898",
+  secondary: "#0D9488",
+  secondaryLight: "#F0FDF9",
+  secondaryMid: "#99F6E4",
+  danger: "#EF4444",
+  dangerLight: "#FEF2F2",
+  warning: "#F59E0B",
+  warningLight: "#FFFBEB",
+  neutral: "#6B7280",
+  neutralLight: "#F3F4F6",
+  infoNeutralBg: "#F3F4F6",
+  infoNeutralText: "#374151",
+  infoAmberBg: "#FEF3C7",
+  infoAmberText: "#78350F",
+};
+
+export const FONT = "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+
+export const INPUT_STYLE = {
+  width: "100%",
+  padding: "10px 14px",
+  border: "1.5px solid " + C.border,
+  borderRadius: 10,
+  fontSize: 14,
+  fontFamily: FONT,
+  background: C.surface,
+  color: C.text,
+  outline: "none",
+  boxSizing: "border-box",
+};
