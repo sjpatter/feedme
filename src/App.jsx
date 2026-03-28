@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useAppData } from "./hooks/useAppData";
 import { supabaseConfigured } from "./lib/supabase";
@@ -12,6 +12,13 @@ import { RecipesTab } from "./tabs/RecipesTab";
 import { GroceryTab } from "./tabs/GroceryTab";
 import { ProfileTab } from "./tabs/ProfileTab";
 import { TestSuite } from "./tests/TestSuite";
+
+const VALID_TABS = ["planner", "recipes", "grocery", "profile"];
+
+function getHashTab() {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  return VALID_TABS.includes(hash) ? hash : "planner";
+}
 
 function LoadingScreen() {
   return (
@@ -49,8 +56,19 @@ export default function App() {
   } = useAppData(user?.id ?? null);
 
   const { toasts, showToast } = useToast();
-  const [tab, setTab] = useState("planner");
+  const [tab, setTab] = useState(getHashTab);
   const [showTests, setShowTests] = useState(false);
+
+  useEffect(() => {
+    function onHashChange() { setTab(getHashTab()); }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  function navigateTo(newTab) {
+    window.location.hash = "/" + newTab;
+    setTab(newTab);
+  }
 
   if (!supabaseConfigured) {
     return (
@@ -90,6 +108,7 @@ export default function App() {
       {tab === "planner" && (
         <PlannerTab
           data={data}
+          userId={user?.id}
           showToast={showToast}
           addFridgeItem={addFridgeItem}
           removeFridgeItem={removeFridgeItem}
@@ -133,7 +152,7 @@ export default function App() {
           editTasteInsight={editTasteInsight}
         />
       )}
-      <BottomNav tab={tab} setTab={setTab} onLongPress={() => setShowTests(true)} />
+      <BottomNav tab={tab} setTab={navigateTo} onLongPress={() => setShowTests(true)} />
       <ToastContainer toasts={toasts} />
     </div>
   );

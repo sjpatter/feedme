@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { callClaude, parseJSON, getMeals } from "../lib/api";
 import { UNSPECIFIED, SECTIONS } from "../lib/constants";
 import { C, FONT, INPUT_STYLE } from "../styles/tokens";
-import { Btn, Card, SectionLabel, Divider, PageHeader, ErrorBanner, AppLogo } from "../components/shared";
+import { Btn, Card, SectionLabel, Divider, PageHeader, ErrorBanner, AppLogo, CollapsibleButton } from "../components/shared";
 import { MealCard } from "../components/MealCard";
 import { WeeklyReview } from "../components/WeeklyReview";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const DRAFT_KEY = (uid) => "pmd_draft_" + uid;
 
 export function PlannerTab({
   data,
+  userId,
   showToast,
   addFridgeItem,
   removeFridgeItem,
@@ -22,6 +24,7 @@ export function PlannerTab({
   const [criteria, setCriteria] = useState({
     totalDinners: 5, cookingNights: 4, newMeals: 2,
     meatMeals: UNSPECIFIED, vegMeals: UNSPECIFIED,
+    noRedMeat: false,
     babyFriendly: true, notes: "",
     quickMeals: UNSPECIFIED, mediumMeals: UNSPECIFIED, involvedMeals: UNSPECIFIED,
     easyCleanup: UNSPECIFIED,
@@ -35,10 +38,36 @@ export function PlannerTab({
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [showFridge, setShowFridge] = useState(false);
   const [newFridgeItem, setNewFridgeItem] = useState("");
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+  const [showReviewExpanded, setShowReviewExpanded] = useState(false);
+
+  // Load draft from localStorage on mount
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY(userId));
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft && draft.meals) {
+          setGeneratedPlan(draft);
+          setShowCriteria(false);
+        }
+      }
+    } catch {}
+  }, [userId]);
+
+  // Persist draft to localStorage whenever it changes
+  useEffect(() => {
+    if (!userId) return;
+    if (generatedPlan) {
+      localStorage.setItem(DRAFT_KEY(userId), JSON.stringify(generatedPlan));
+    } else {
+      localStorage.removeItem(DRAFT_KEY(userId));
+    }
+  }, [generatedPlan, userId]);
 
   const plan = generatedPlan || data.currentWeek;
 
-  // Weekly review: show if current week was confirmed > 7 days ago and hasn't been reviewed
   const showWeeklyReview = !!(
     data.currentWeek &&
     !generatedPlan &&
@@ -70,22 +99,42 @@ export function PlannerTab({
     const favNames = hasFav ? data.recipes.map((r) => r.name).join(", ") : "none";
     const fromFav = hasFav ? Math.max(0, criteria.cookingNights - criteria.newMeals) : 0;
     const newCount = hasFav ? criteria.newMeals : criteria.cookingNights;
-    const recent = (data.weeklyPlans || []).slice(-2)
+    const allPastMeals = (data.weeklyPlans || [])
       .reduce((a, w) => a.concat((w.meals || []).map((m) => m.name)), []).join(", ") || "none";
     const fridge = (data.fridgeItems || []).map((i) => i.text).join(", ") || "none";
     const profile = (data.tasteProfile || []).map((p) => p.text).join("; ") || "none";
     const skipped = (data.mealHistory || []).filter((h) => h.signal === "skip").slice(-10).map((h) => h.name).join(", ") || "none";
+
     return "Generate a weekly dinner plan.\n" +
-      "Saved favorites: " + favNames + "\nRecent meals to avoid: " + recent + "\nPreviously skipped: " + skipped + "\nTaste profile: " + profile + "\nFridge items to use: " + fridge + "\n" +
-      "Total dinners: " + criteria.totalDinners + "\nCooking nights: " + criteria.cookingNights + "\nNew recipes: " + newCount + ", from favorites: " + fromFav + (!hasFav ? " (no favorites yet)" : "") + "\n" +
-      "Meat: " + (criteria.meatMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.meatMeals) + "\nVegetarian: " + (criteria.vegMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.vegMeals) + "\n" +
-      "Quick (<=30min): " + (criteria.quickMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.quickMeals) + "\nMedium (45-60min): " + (criteria.mediumMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.mediumMeals) + "\nInvolved (1-2hr): " + (criteria.involvedMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.involvedMeals) + "\n" +
-      "One-pot/sheet-pan: " + (criteria.easyCleanup === UNSPECIFIED ? "your choice" : "at least " + criteria.easyCleanup) + "\nBaby tips: " + (criteria.babyFriendly ? "yes" : "no") + "\nNotes: " + (criteria.notes || "none") + "\n\n" +
-      "Recipe sourcing: Draw from a wide variety. Prioritize iconic recipes -- Kenji Lopez-Alt classics, Smitten Kitchen, Ottolenghi vegetables, Bon Appetit BA Best, Serious Eats tested classics, NYT Cooking most-saved, Food52 favorites, Ina Garten, Joshua Weissman, The Kitchn. For each dish: who makes the most celebrated version? Vary sources. Only include sourceUrl if confident.\n\n" +
+      "Saved favorites: " + favNames + "\n" +
+      "All past meals (avoid repeating recently): " + allPastMeals + "\n" +
+      "Previously skipped (don't suggest): " + skipped + "\n" +
+      "Taste profile: " + profile + "\n" +
+      "Fridge items to use: " + fridge + "\n\n" +
+      "Total dinners: " + criteria.totalDinners + "\n" +
+      "Cooking nights: " + criteria.cookingNights + "\n" +
+      "New recipes: " + newCount + ", from favorites: " + fromFav + (!hasFav ? " (no favorites yet)" : "") + "\n" +
+      "Meat meals (at least): " + (criteria.meatMeals === UNSPECIFIED ? "your choice" : criteria.meatMeals) + "\n" +
+      "Vegetarian (at least): " + (criteria.vegMeals === UNSPECIFIED ? "your choice" : criteria.vegMeals) + "\n" +
+      (criteria.noRedMeat ? "NO RED MEAT: Strictly no beef, pork, or lamb. Chicken, fish, seafood, and vegetarian only.\n" : "") +
+      "Quick (<=30min): " + (criteria.quickMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.quickMeals) + "\n" +
+      "Medium (45-60min): " + (criteria.mediumMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.mediumMeals) + "\n" +
+      "Involved (1-2hr): " + (criteria.involvedMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.involvedMeals) + "\n" +
+      "One-pot/sheet-pan: " + (criteria.easyCleanup === UNSPECIFIED ? "your choice" : "at least " + criteria.easyCleanup) + "\n" +
+      "Baby tips: " + (criteria.babyFriendly ? "yes" : "no") + "\n" +
+      "Notes: " + (criteria.notes || "none") + "\n\n" +
+      "Global cuisine variety: Draw from a wide range — Italian, Japanese, Mexican, Indian, Thai, Korean, Vietnamese, Mediterranean, Middle Eastern, French, American classics. Aim for variety across the week. Avoid two meals from the same cuisine.\n\n" +
+      "Recipe sourcing: Prioritize iconic, celebrated versions — Kenji Lopez-Alt, Smitten Kitchen, Ottolenghi, Bon Appétit, Serious Eats, NYT Cooking, Food52, Ina Garten, The Kitchn. For each dish: who makes the most celebrated version? Vary sources. Only include sourceUrl if confident it's correct.\n\n" +
       "Return ONLY JSON overview, no ingredients or steps:\n{\"meals\":[{\"name\":\"\",\"source\":\"\",\"sourceUrl\":\"\",\"isNew\":true,\"isMeat\":true,\"isVegetarian\":false,\"hasLeftovers\":false,\"leftoverDays\":0,\"cookTime\":30,\"difficulty\":\"easy\",\"isEasyCleanup\":false,\"description\":\"One sentence.\",\"babyNote\":\"One tip.\",\"usesFridgeItems\":[]}]}\ndifficulty=easy/intermediate/advanced.";
   }
 
   async function generatePlan() {
+    // Warn before overwriting an existing confirmed plan
+    if (data.currentWeek && data.currentWeek.confirmedAt && !showOverwriteConfirm) {
+      setShowOverwriteConfirm(true);
+      return;
+    }
+    setShowOverwriteConfirm(false);
     setLoading(true); setError(null);
     try {
       const raw = await callClaude([{ role: "user", content: buildPrompt() }], "You are a helpful meal planner. Respond ONLY with valid JSON. No markdown, no backticks, no preamble.");
@@ -163,13 +212,32 @@ export function PlannerTab({
       />
       <div style={{ padding: "0 1.25rem" }}>
         {showWeeklyReview && (
-          <WeeklyReview
-            plan={data.currentWeek}
-            recipes={data.recipes}
-            onAddRecipe={(meal) => handleAddToFavorites(meal, null)}
-            onDismiss={handleDismissReview}
-            showToast={showToast}
-          />
+          <div style={{ marginBottom: "1.25rem" }}>
+            <CollapsibleButton
+              label="Time to review this week's meals"
+              sublabel="Save what you loved to your favorites"
+              isOpen={showReviewExpanded}
+              onToggle={() => setShowReviewExpanded(!showReviewExpanded)}
+            />
+            {showReviewExpanded && (
+              <WeeklyReview
+                plan={data.currentWeek}
+                recipes={data.recipes}
+                onAddRecipe={(meal) => handleAddToFavorites(meal, null)}
+                onDismiss={handleDismissReview}
+                showToast={showToast}
+              />
+            )}
+          </div>
+        )}
+
+        {generatedPlan && !showCriteria && (
+          <button
+            onClick={() => setShowCriteria(true)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: C.primary, fontFamily: FONT, fontWeight: 600, padding: "0 0 12px", display: "flex", alignItems: "center", gap: 4 }}
+          >
+            ← Edit options
+          </button>
         )}
 
         {showCriteria && (
@@ -185,7 +253,7 @@ export function PlannerTab({
             </div>
             {!data.recipes.length && criteria.cookingNights > criteria.newMeals && (
               <p style={{ fontSize: 12, color: C.infoNeutralText, fontFamily: FONT, margin: "0 0 8px", background: C.infoNeutralBg, borderRadius: 8, padding: "7px 10px", fontWeight: 400 }}>
-                {"No saved favorites yet -- all " + criteria.cookingNights + " meals will be new suggestions."}
+                {"No saved favorites yet — all " + criteria.cookingNights + " meals will be new suggestions."}
               </p>
             )}
             {criteria.totalDinners > criteria.cookingNights && (
@@ -195,7 +263,7 @@ export function PlannerTab({
             )}
             <Divider />
             <SectionLabel>Dietary</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               {[["Meat meals (at least)","meatMeals"],["Vegetarian (at least)","vegMeals"]].map((a) => (
                 <label key={a[1]} style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500 }}>
                   {a[0]}
@@ -205,6 +273,10 @@ export function PlannerTab({
                 </label>
               ))}
             </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.textSecondary, cursor: "pointer", fontFamily: FONT, fontWeight: 500 }}>
+              <input type="checkbox" checked={criteria.noRedMeat} onChange={(e) => setC("noRedMeat", e.target.checked)} style={{ width: 18, height: 18, accentColor: C.primary, cursor: "pointer" }} />
+              No red meat (chicken, fish, and vegetarian only)
+            </label>
             <Divider />
             <SectionLabel>Cooking style</SectionLabel>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -264,12 +336,27 @@ export function PlannerTab({
               Notes and requests
               <textarea value={criteria.notes} onChange={(e) => setC("notes", e.target.value)} placeholder="e.g. something quick on Wednesday, avoid shellfish..." rows={2} style={Object.assign({}, INPUT_STYLE, { marginTop: 5, resize: "vertical", lineHeight: 1.6 })} />
             </label>
+
+            {showOverwriteConfirm && (
+              <div style={{ marginTop: 14, background: C.warningLight, border: "1px solid #FCD34D", borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ margin: "0 0 10px", fontSize: 13, color: C.infoAmberText, fontFamily: FONT, fontWeight: 500, lineHeight: 1.5 }}>
+                  You already have a confirmed plan. A new plan will be saved as a draft — you'll still need to confirm it to replace the current one.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn small onClick={generatePlan} variant="primary">Generate anyway</Btn>
+                  <Btn small onClick={() => setShowOverwriteConfirm(false)}>Cancel</Btn>
+                </div>
+              </div>
+            )}
+
             <ErrorBanner message={error} />
-            <div style={{ marginTop: 14 }}>
-              <Btn fullWidth onClick={generatePlan} disabled={loading} variant="primary">
-                {loading ? "Generating your plan..." : "Generate meal plan"}
-              </Btn>
-            </div>
+            {!showOverwriteConfirm && (
+              <div style={{ marginTop: 14 }}>
+                <Btn fullWidth onClick={generatePlan} disabled={loading} variant="primary">
+                  {loading ? "Generating your plan..." : "Generate meal plan"}
+                </Btn>
+              </div>
+            )}
           </Card>
         )}
 

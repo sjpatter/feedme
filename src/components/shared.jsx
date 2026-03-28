@@ -39,7 +39,7 @@ export function Tag(props) {
   };
   const c = map[props.color] || map.neutral;
   return (
-    <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: c.bg, color: c.text, fontWeight: 600, letterSpacing: "0.02em", fontFamily: FONT }}>
+    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: c.bg, color: c.text, fontWeight: 600, letterSpacing: "0.02em", fontFamily: FONT }}>
       {props.label}
     </span>
   );
@@ -82,7 +82,13 @@ export function PageHeader(props) {
 }
 
 export function Card(props) {
-  const base = { background: C.surface, border: "1px solid " + C.border, borderRadius: 14, padding: "1rem 1.25rem" };
+  const base = {
+    background: C.surface,
+    border: "1px solid " + C.border,
+    borderRadius: 14,
+    padding: "1rem 1.25rem",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+  };
   return <div style={Object.assign({}, base, props.style || {})}>{props.children}</div>;
 }
 
@@ -115,22 +121,22 @@ export function CollapsibleButton(props) {
 export function AppLogo() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="18" cy="22" rx="13" ry="5" fill={C.primaryLight} stroke={C.primary} strokeWidth="1.5"/>
-        <path d="M5 22 Q5 32 18 32 Q31 32 31 22" fill={C.primaryLight} stroke={C.primary} strokeWidth="1.5"/>
-        <path d="M12 16 Q13 13 12 10" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M18 15 Q19 12 18 9" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M24 16 Q25 13 24 10" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <line x1="29" y1="4" x2="29" y2="18" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <line x1="27" y1="4" x2="27" y2="9" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <line x1="29" y1="4" x2="29" y2="9" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <line x1="31" y1="4" x2="31" y2="9" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M27 9 Q29 11 31 9" stroke={C.primary} strokeWidth="1.5" fill="none"/>
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Fork */}
+        <line x1="7" y1="6" x2="7" y2="18" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="5" y1="6" x2="5" y2="11" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
+        <line x1="9" y1="6" x2="9" y2="11" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
+        <path d="M5 11 Q7 13 9 11" fill="none" stroke={C.primary} strokeWidth="1.3"/>
+        {/* Plate */}
+        <circle cx="21" cy="22" r="15" fill={C.primaryLight} stroke={C.primary} strokeWidth="1.5"/>
+        <circle cx="21" cy="22" r="10" fill="none" stroke={C.primary} strokeWidth="0.8" opacity="0.45"/>
+        {/* Knife */}
+        <line x1="35" y1="6" x2="35" y2="18" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M35 6 C38 8.5 38 13 35 14" fill={C.primary} stroke="none"/>
       </svg>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 0 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "-0.04em", fontFamily: FONT }}>feed</span>
-        <span style={{ fontSize: 26, fontWeight: 800, color: C.primary, letterSpacing: "-0.04em", fontFamily: FONT }}>me</span>
-        <span style={{ fontSize: 20, marginLeft: 1 }}>🍕</span>
+      <div>
+        <p style={{ margin: 0, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: C.primary, fontFamily: FONT, textTransform: "uppercase", lineHeight: 1 }}>PLAN MY</p>
+        <p style={{ margin: 0, fontSize: 23, fontWeight: 700, letterSpacing: "-0.04em", color: C.text, fontFamily: "'Georgia', 'Times New Roman', serif", fontStyle: "italic", lineHeight: 1.1 }}>dinner</p>
       </div>
     </div>
   );
