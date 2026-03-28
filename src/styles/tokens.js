@@ -1,25 +1,42 @@
 export const C = {
-  bg: "#F7F3EF",
+  // Backgrounds
+  bg: "#FFFFFF",
   surface: "#FFFFFF",
-  surfaceAlt: "#FAF7F4",
+  surfaceAlt: "#FAFAF9",
+
+  // Borders
   border: "#EDE8E3",
   borderMid: "#D6CFC8",
+  cardBorder: "rgba(0,0,0,0.05)",
+  cardShadow: "0 4px 20px rgba(168, 67, 42, 0.08)",
+  navBorder: "rgba(0,0,0,0.06)",
+
+  // Text
   text: "#111111",
-  textSecondary: "#555555",
-  textTertiary: "#999999",
+  textSecondary: "#666666",
+  textTertiary: "#AAAAAA",
+
+  // Primary (terracotta)
   primary: "#C0472A",
-  primaryDark: "#9E3A22",
+  primaryDark: "#993C1D",
   primaryLight: "#FDF0EC",
-  primaryMid: "#E9A898",
+  primaryMid: "#E8A898",
+
+  // Secondary (teal)
   secondary: "#0D9488",
-  secondaryLight: "#F0FDF9",
+  secondaryLight: "#E1F5EE",
   secondaryMid: "#99F6E4",
-  danger: "#EF4444",
+  secondaryText: "#0F6E56",
+
+  // Semantic
+  danger: "#991B1B",
   dangerLight: "#FEF2F2",
-  warning: "#F59E0B",
-  warningLight: "#FFFBEB",
+  warning: "#78350F",
+  warningLight: "#FEF3C7",
   neutral: "#6B7280",
   neutralLight: "#F3F4F6",
+
+  // Legacy aliases (keep for compat)
   infoNeutralBg: "#F3F4F6",
   infoNeutralText: "#374151",
   infoAmberBg: "#FEF3C7",
@@ -27,6 +44,7 @@ export const C = {
 };
 
 export const FONT = "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+export const SERIF = "'Georgia', 'Times New Roman', serif";
 
 export const INPUT_STYLE = {
   width: "100%",

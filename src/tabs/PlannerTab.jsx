@@ -206,10 +206,7 @@ export function PlannerTab({
 
   return (
     <div>
-      <PageHeader
-        logo={<AppLogo />}
-        subtitle={plan && plan.meals ? plan.meals.length + " meals this week" : "What's for dinner?"}
-      />
+      <PageHeader logo={<AppLogo />} />
       <div style={{ padding: "0 1.25rem" }}>
         {showWeeklyReview && (
           <div style={{ marginBottom: "1.25rem" }}>

@@ -79,7 +79,7 @@ export function ProfileTab({
     <div>
       <PageHeader
         title="My profile"
-        subtitle="How Feed Me learns your taste"
+        subtitle="How Plan My Dinner learns your taste"
         action={
           <Btn small onClick={handleSignOut} disabled={signingOut}>
             {signingOut ? "..." : "Sign out"}

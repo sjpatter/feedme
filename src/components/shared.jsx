@@ -1,25 +1,26 @@
-import { C, FONT } from "../styles/tokens";
+import { C, FONT, SERIF } from "../styles/tokens";
 
 export function Btn(props) {
   const variant = props.variant || "ghost";
   const base = {
     display: "inline-flex", alignItems: "center", justifyContent: "center",
     gap: 6, cursor: props.disabled ? "not-allowed" : "pointer", border: "none",
-    borderRadius: 10, fontFamily: FONT, fontWeight: 700,
+    borderRadius: 12, fontFamily: FONT, fontWeight: 700,
     opacity: props.disabled ? 0.4 : 1,
     width: props.fullWidth ? "100%" : "auto",
-    padding: props.small ? "7px 14px" : "11px 20px",
+    padding: props.small ? "7px 14px" : "13px 20px",
     fontSize: props.small ? 13 : 14,
     letterSpacing: "-0.01em",
     boxSizing: "border-box",
+    transition: "opacity 0.15s",
   };
   const styles = {
-    primary: { background: C.primary, color: "#fff" },
-    ghost: { background: "transparent", color: C.text, border: "1.5px solid " + C.border },
+    primary: { background: C.primary, color: "#fff", border: "none" },
+    ghost: { background: "transparent", color: C.text, border: "1.5px solid #E8E8E8" },
     soft: { background: C.primaryLight, color: C.primaryDark, border: "1.5px solid " + C.primaryMid },
     teal: { background: C.secondaryLight, color: C.secondary, border: "1.5px solid " + C.secondaryMid },
-    danger: { background: "transparent", color: C.danger, border: "1.5px solid " + C.border },
-    dark: { background: C.text, color: "#fff" },
+    danger: { background: "transparent", color: "#991B1B", border: "1.5px solid #E8E8E8" },
+    dark: { background: C.text, color: "#fff", border: "none" },
   };
   const s = props.danger ? styles.danger : (styles[variant] || styles.ghost);
   return (
@@ -29,18 +30,25 @@ export function Btn(props) {
   );
 }
 
-export function Tag(props) {
-  const map = {
-    neutral: { bg: C.neutralLight, text: C.neutral },
-    primary: { bg: C.primaryLight, text: C.primaryDark },
-    teal: { bg: C.secondaryLight, text: C.secondary },
-    warning: { bg: C.warningLight, text: C.warning },
-    danger: { bg: C.dangerLight, text: C.danger },
-  };
-  const c = map[props.color] || map.neutral;
+// Tag color map following design spec exactly
+const TAG_COLORS = {
+  neutral:  { bg: "#F3F4F6", text: "#6B7280" },  // LEFTOVER
+  primary:  { bg: "#FDF0EC", text: "#993C1D" },  // NEW
+  teal:     { bg: "#E1F5EE", text: "#0F6E56" },  // VEGGIE / EASY CLEANUP / EASY
+  warning:  { bg: "#FEF3C7", text: "#78350F" },  // MEAT / INTERMEDIATE
+  danger:   { bg: "#FEF2F2", text: "#991B1B" },  // ADVANCED
+};
+
+export function Tag({ label, color }) {
+  const c = TAG_COLORS[color] || TAG_COLORS.neutral;
   return (
-    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: c.bg, color: c.text, fontWeight: 600, letterSpacing: "0.02em", fontFamily: FONT }}>
-      {props.label}
+    <span style={{
+      fontSize: 10, padding: "3px 10px", borderRadius: 20,
+      background: c.bg, color: c.text,
+      fontWeight: 700, letterSpacing: "0.02em", fontFamily: FONT,
+      display: "inline-block",
+    }}>
+      {label}
     </span>
   );
 }
@@ -60,11 +68,20 @@ export function Divider() {
 
 export function PageHeader(props) {
   return (
-    <div style={{ padding: "1.5rem 1.25rem 0", marginBottom: "1.25rem" }}>
+    <div style={{
+      padding: "1.25rem 1.25rem 0",
+      marginBottom: "1.25rem",
+      background: "#FFFFFF",
+      borderBottom: "1px solid #F0EDE8",
+      paddingBottom: "1.25rem",
+    }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           {props.logo ? props.logo : (
-            <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.text, letterSpacing: "-0.03em", fontFamily: FONT }}>
+            <h1 style={{
+              fontSize: 24, fontWeight: 700, margin: 0, color: C.text,
+              letterSpacing: "-0.5px", fontFamily: SERIF,
+            }}>
               {props.title}
             </h1>
           )}
@@ -76,18 +93,17 @@ export function PageHeader(props) {
         </div>
         {props.action}
       </div>
-      <div style={{ height: 1, background: C.border, marginTop: "1.25rem" }} />
     </div>
   );
 }
 
 export function Card(props) {
   const base = {
-    background: C.surface,
-    border: "1px solid " + C.border,
-    borderRadius: 14,
-    padding: "1rem 1.25rem",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+    background: "#FFFFFF",
+    border: "1px solid rgba(0,0,0,0.05)",
+    borderRadius: 16,
+    padding: "16px 18px",
+    boxShadow: "0 4px 20px rgba(168, 67, 42, 0.08)",
   };
   return <div style={Object.assign({}, base, props.style || {})}>{props.children}</div>;
 }
@@ -95,8 +111,8 @@ export function Card(props) {
 export function ErrorBanner(props) {
   if (!props.message) return null;
   return (
-    <div style={{ background: C.dangerLight, border: "1px solid #FECACA", borderRadius: 10, padding: "10px 14px", marginTop: 10 }}>
-      <p style={{ margin: 0, fontSize: 13, color: C.danger, fontFamily: FONT, fontWeight: 400 }}>
+    <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "10px 14px", marginTop: 10 }}>
+      <p style={{ margin: 0, fontSize: 13, color: "#991B1B", fontFamily: FONT, fontWeight: 400 }}>
         <strong>Error: </strong>{props.message}
       </p>
     </div>
@@ -107,7 +123,15 @@ export function CollapsibleButton(props) {
   return (
     <button
       onClick={props.onToggle}
-      style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: "1px solid " + (props.isOpen ? C.primaryMid : C.border), background: props.isOpen ? C.primaryLight : C.surface, cursor: "pointer", fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: props.isOpen ? 10 : "1rem" }}
+      style={{
+        width: "100%", padding: "12px 16px", borderRadius: 12,
+        border: "1px solid " + (props.isOpen ? C.primaryMid : "rgba(0,0,0,0.06)"),
+        background: props.isOpen ? C.primaryLight : "#FFFFFF",
+        boxShadow: props.isOpen ? "none" : "0 2px 8px rgba(168,67,42,0.06)",
+        cursor: "pointer", fontFamily: FONT,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: props.isOpen ? 10 : "1rem",
+      }}
     >
       <div style={{ textAlign: "left" }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text, letterSpacing: "-0.01em" }}>{props.label}</p>
@@ -121,22 +145,30 @@ export function CollapsibleButton(props) {
 export function AppLogo() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Fork */}
-        <line x1="7" y1="6" x2="7" y2="18" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <line x1="5" y1="6" x2="5" y2="11" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
-        <line x1="9" y1="6" x2="9" y2="11" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
-        <path d="M5 11 Q7 13 9 11" fill="none" stroke={C.primary} strokeWidth="1.3"/>
-        {/* Plate */}
-        <circle cx="21" cy="22" r="15" fill={C.primaryLight} stroke={C.primary} strokeWidth="1.5"/>
-        <circle cx="21" cy="22" r="10" fill="none" stroke={C.primary} strokeWidth="0.8" opacity="0.45"/>
-        {/* Knife */}
-        <line x1="35" y1="6" x2="35" y2="18" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M35 6 C38 8.5 38 13 35 14" fill={C.primary} stroke="none"/>
+      {/*
+        viewBox 0 0 64 38:
+        Plate cx=32, r=12 → left edge x=20, right edge x=44
+        Fork: rightmost prong at x=7 → gap to plate = 13px ✓
+        Knife: leftmost edge at x=57 → gap from plate right = 13px ✓
+      */}
+      <svg width="48" height="38" viewBox="0 0 64 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Fork — center handle x=5, prongs x=3/5/7 */}
+        <line x1="5" y1="6" x2="5" y2="32" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="3" y1="6" x2="3" y2="14" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
+        <line x1="7" y1="6" x2="7" y2="14" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
+        <path d="M3 14 Q5 16.5 7 14" fill="none" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
+
+        {/* Plate — cx=32, cy=21, r=12 */}
+        <circle cx="32" cy="21" r="12" fill={C.primaryLight} stroke={C.primary} strokeWidth="1.5"/>
+        <circle cx="32" cy="21" r="8" fill="none" stroke={C.primary} strokeWidth="0.8" opacity="0.4"/>
+
+        {/* Knife — handle at x=59, blade curving right */}
+        <line x1="59" y1="8" x2="59" y2="32" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M59 6 C62 8.5 62 13 59 14" fill={C.primary} stroke="none"/>
       </svg>
       <div>
         <p style={{ margin: 0, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: C.primary, fontFamily: FONT, textTransform: "uppercase", lineHeight: 1 }}>PLAN MY</p>
-        <p style={{ margin: 0, fontSize: 23, fontWeight: 700, letterSpacing: "-0.04em", color: C.text, fontFamily: "'Georgia', 'Times New Roman', serif", fontStyle: "italic", lineHeight: 1.1 }}>dinner</p>
+        <p style={{ margin: 0, fontSize: 23, fontWeight: 700, letterSpacing: "-0.04em", color: C.text, fontFamily: SERIF, fontStyle: "italic", lineHeight: 1.1 }}>dinner</p>
       </div>
     </div>
   );
@@ -145,9 +177,9 @@ export function AppLogo() {
 export function ToastContainer(props) {
   if (!props.toasts.length) return null;
   return (
-    <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 640, padding: "0 1.25rem", pointerEvents: "none" }}>
+    <div style={{ position: "fixed", bottom: 88, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 640, padding: "0 1.25rem", pointerEvents: "none" }}>
       {props.toasts.map((t) => (
-        <div key={t.id} style={{ background: t.type === "error" ? C.danger : C.text, color: "#fff", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontFamily: FONT, fontWeight: 500, display: "flex", alignItems: "center", gap: 10 }}>
+        <div key={t.id} style={{ background: t.type === "error" ? "#991B1B" : C.text, color: "#fff", borderRadius: 12, padding: "12px 16px", fontSize: 14, fontFamily: FONT, fontWeight: 500, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.18)" }}>
           <span style={{ fontSize: 16 }}>{t.type === "error" ? "✕" : "✓"}</span>
           {t.message}
         </div>
