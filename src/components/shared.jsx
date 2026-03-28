@@ -143,34 +143,63 @@ export function CollapsibleButton(props) {
 }
 
 export function AppLogo() {
+  /*
+   * viewBox 0 0 116 68
+   * Plate: cx=65 cy=34 r=28 → left x=37, right x=93, top y=6, bottom y=62
+   * Fork: 4 tines at x=18,21,24,27. Rightmost outer edge: 27.75. Gap to plate: 9.25px ✓
+   * Fork handle: x=22.5, y=24 to y=62 — matches plate height (56px)
+   * Knife blade: leftmost ≈ x=101 (cubic curve control). Gap from plate right: 8px ✓
+   * Knife handle: y=53 to y=62 — matches plate height
+   * Text centered inside plate at cx=65, cy=34
+   */
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      {/*
-        viewBox 0 0 64 38:
-        Plate cx=32, r=12 → left edge x=20, right edge x=44
-        Fork: rightmost prong at x=7 → gap to plate = 13px ✓
-        Knife: leftmost edge at x=57 → gap from plate right = 13px ✓
-      */}
-      <svg width="48" height="38" viewBox="0 0 64 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Fork — center handle x=5, prongs x=3/5/7 */}
-        <line x1="5" y1="6" x2="5" y2="32" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <line x1="3" y1="6" x2="3" y2="14" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
-        <line x1="7" y1="6" x2="7" y2="14" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
-        <path d="M3 14 Q5 16.5 7 14" fill="none" stroke={C.primary} strokeWidth="1.3" strokeLinecap="round"/>
+    <svg width="100" height="59" viewBox="0 0 116 68" fill="none" xmlns="http://www.w3.org/2000/svg">
 
-        {/* Plate — cx=32, cy=21, r=12 */}
-        <circle cx="32" cy="21" r="12" fill={C.primaryLight} stroke={C.primary} strokeWidth="1.5"/>
-        <circle cx="32" cy="21" r="8" fill="none" stroke={C.primary} strokeWidth="0.8" opacity="0.4"/>
+      {/* Fork — 4 tines, height y:6-62 matches plate diameter */}
+      <line x1="18" y1="8"  x2="18" y2="20" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="21" y1="6"  x2="21" y2="22" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="24" y1="6"  x2="24" y2="22" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="27" y1="8"  x2="27" y2="20" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M18 20 Q22.5 24.5 27 20" fill="none" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="22.5" y1="24" x2="22.5" y2="62" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
 
-        {/* Knife — handle at x=59, blade curving right */}
-        <line x1="59" y1="8" x2="59" y2="32" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M59 6 C62 8.5 62 13 59 14" fill={C.primary} stroke="none"/>
-      </svg>
-      <div>
-        <p style={{ margin: 0, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: C.primary, fontFamily: FONT, textTransform: "uppercase", lineHeight: 1 }}>PLAN MY</p>
-        <p style={{ margin: 0, fontSize: 23, fontWeight: 700, letterSpacing: "-0.04em", color: C.text, fontFamily: SERIF, fontStyle: "italic", lineHeight: 1.1 }}>dinner</p>
-      </div>
-    </div>
+      {/* Plate — two concentric circles */}
+      <circle cx="65" cy="34" r="28" fill="#FDF0EC" stroke="#C0472A" strokeWidth="2"/>
+      <circle cx="65" cy="34" r="22" fill="none" stroke="#C0472A" strokeWidth="0.8" opacity="0.4"/>
+
+      {/* "PLAN MY" — small caps sans-serif, centered inside plate */}
+      <text
+        x="65" y="28"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="#C0472A"
+        fontSize="9"
+        fontWeight="700"
+        fontFamily="system-ui, -apple-system, sans-serif"
+        letterSpacing="1.5"
+      >PLAN MY</text>
+
+      {/* "dinner" — italic Georgia, centered below */}
+      <text
+        x="65" y="42"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="#C0472A"
+        fontSize="16"
+        fontWeight="700"
+        fontStyle="italic"
+        fontFamily="Georgia, 'Times New Roman', serif"
+        letterSpacing="-0.5"
+      >dinner</text>
+
+      {/* Knife — blade left (cutting edge) curves slightly, spine right is straight */}
+      <path
+        d="M103 8 C101 22 101 40 102 52 L106 52 L105 8 Q104 6 103 8 Z"
+        fill="#C0472A"
+      />
+      {/* Knife handle — thicker to distinguish from blade */}
+      <line x1="104" y1="53" x2="104" y2="62" stroke="#C0472A" strokeWidth="4" strokeLinecap="round"/>
+    </svg>
   );
 }
 

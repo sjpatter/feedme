@@ -49,7 +49,7 @@ export const SERIF = "'Georgia', 'Times New Roman', serif";
 export const INPUT_STYLE = {
   width: "100%",
   padding: "10px 14px",
-  border: "1.5px solid " + C.border,
+  border: "1.5px solid #E8E8E8",
   borderRadius: 10,
   fontSize: 14,
   fontFamily: FONT,
