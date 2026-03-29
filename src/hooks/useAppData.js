@@ -458,7 +458,7 @@ export function useAppData(userId) {
 
   async function buildGroceryFromPlan(onProgress) {
     const meals = data.currentWeek?.meals || [];
-    const all = [];
+    const rawIngredients = [];
 
     for (let i = 0; i < meals.length; i++) {
       const meal = meals[i];
@@ -481,18 +481,45 @@ export function useAppData(userId) {
       }
 
       ingredients.forEach((ing) => {
-        const sec = SECTIONS.includes(ing.section) ? ing.section : "other";
-        all.push({
-          grocery_list_id: groceryListId,
-          text: (ing.amount ? ing.amount + " " : "") + (typeof ing === "string" ? ing : ing.name),
-          section: sec,
-          from_meal: true,
-          checked: false,
+        rawIngredients.push({
+          name: typeof ing === "string" ? ing : ing.name,
+          amount: ing.amount || "",
+          section: SECTIONS.includes(ing.section) ? ing.section : "other",
         });
       });
     }
 
-    if (all.length === 0) throw new Error("Could not fetch ingredients. Try again.");
+    if (rawIngredients.length === 0) throw new Error("Could not fetch ingredients. Try again.");
+
+    // Consolidate duplicates via Claude
+    if (onProgress) onProgress("Consolidating ingredients...");
+    let consolidated = rawIngredients;
+    try {
+      const consolidateRaw = await callClaude(
+        [{
+          role: "user",
+          content: `You are a grocery list assistant. I have a list of ingredients from multiple recipes that may contain duplicates. Please consolidate them into a single clean shopping list by: (1) merging ingredients that are the same thing even if worded differently (e.g. 'garlic', 'garlic cloves', 'minced garlic' should all merge), (2) summing amounts where possible (e.g. '1 clove' + '2 cloves' = '3 cloves'), (3) keeping the most descriptive name where names differ, (4) removing common pantry staples that are assumed to always be on hand: salt, pepper, black pepper, olive oil, vegetable oil, cooking oil, butter, flour, sugar, water, baking powder, baking soda, vanilla extract, vinegar, soy sauce. Return ONLY a JSON array: [{"name": "", "amount": "", "section": ""}]. Section must be one of: produce, dairy, meat, grains, other.\n\nIngredients:\n${JSON.stringify(rawIngredients)}`,
+        }],
+        "You are a grocery list assistant. Respond ONLY with valid JSON. No markdown, no backticks."
+      );
+      const parsed = parseJSON(consolidateRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        consolidated = parsed;
+      }
+    } catch (e) {
+      // fallback to raw list if consolidation fails
+    }
+
+    const all = consolidated.map((ing) => {
+      const sec = SECTIONS.includes(ing.section) ? ing.section : "other";
+      return {
+        grocery_list_id: groceryListId,
+        text: (ing.amount ? ing.amount + " " : "") + (typeof ing === "string" ? ing : ing.name),
+        section: sec,
+        from_meal: true,
+        checked: false,
+      };
+    });
 
     // Replace existing from-meal items
     await supabase.from("grocery_items").delete().eq("grocery_list_id", groceryListId).eq("from_meal", true);

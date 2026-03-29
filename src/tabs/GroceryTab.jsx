@@ -76,6 +76,19 @@ export function GroceryTab({
     catch (e) { showToast("Could not remove staple.", "error"); }
   }
 
+  function isStapleAdded(st) {
+    const sec = SECTIONS.includes(st.section) ? st.section : "other";
+    return (data.groceryList[sec] || []).some((i) => i.text.toLowerCase() === st.text.toLowerCase());
+  }
+
+  async function handleAddSingleStaple(st) {
+    try {
+      await addGroceryItem(st.text, st.section);
+    } catch (e) {
+      showToast("Could not add staple.", "error");
+    }
+  }
+
   async function handleAddStaplesToList() {
     try {
       const count = await addStaplesToGrocery();
@@ -152,17 +165,34 @@ export function GroceryTab({
             {(data.staples||[]).length > 0 && (
               <div>
                 <div style={{ display:"flex",flexDirection:"column",gap:6,marginBottom:14 }}>
-                  {(data.staples||[]).map((st) => (
-                    <div key={st.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",background:C.surface,borderRadius:10,padding:"8px 12px",border:"1px solid "+C.border }}>
-                      <span style={{ fontSize:13,color:C.text,fontFamily:FONT,fontWeight:400 }}>{st.text}</span>
-                      <div style={{ display:"flex",gap:10,alignItems:"center" }}>
-                        <span style={{ fontSize:11,color:C.textTertiary,fontFamily:FONT,fontWeight:400 }}>{st.section}</span>
-                        <button onClick={() => handleRemoveStaple(st.id)} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.textTertiary,padding:0,lineHeight:1 }}>x</button>
+                  {(data.staples||[]).map((st) => {
+                    const added = isStapleAdded(st);
+                    return (
+                      <div key={st.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",background:C.surface,borderRadius:10,padding:"8px 12px",border:"1px solid "+C.border }}>
+                        <span style={{ fontSize:13,color:C.text,fontFamily:FONT,fontWeight:400 }}>{st.text}</span>
+                        <div style={{ display:"flex",gap:10,alignItems:"center" }}>
+                          <span style={{ fontSize:11,color:C.textTertiary,fontFamily:FONT,fontWeight:400 }}>{st.section}</span>
+                          {added ? (
+                            <span style={{ fontSize:12,fontWeight:600,color:"#0D9488",fontFamily:FONT }}>✓ Added</span>
+                          ) : (
+                            <button onClick={() => handleAddSingleStaple(st)} style={{ background:"#FDF0EC",border:"1.5px solid #E8A898",color:"#C0472A",borderRadius:20,fontSize:12,fontWeight:700,padding:"4px 10px",cursor:"pointer",fontFamily:FONT }}>+ Add</button>
+                          )}
+                          <button onClick={() => handleRemoveStaple(st.id)} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.textTertiary,padding:0,lineHeight:1 }}>×</button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-                <Btn fullWidth variant="soft" onClick={handleAddStaplesToList}>Add all staples to this week's list</Btn>
+                {(() => {
+                  const unadded = (data.staples||[]).filter((st) => !isStapleAdded(st));
+                  const someAdded = unadded.length < (data.staples||[]).length;
+                  if (unadded.length === 0) return null;
+                  return (
+                    <Btn fullWidth variant="soft" onClick={handleAddStaplesToList}>
+                      {someAdded ? "Add remaining staples" : "Add all staples"}
+                    </Btn>
+                  );
+                })()}
               </div>
             )}
           </Card>
@@ -188,7 +218,6 @@ export function GroceryTab({
                       {item.checked && <span style={{ fontSize:11,color:"#fff",fontWeight:700 }}>✓</span>}
                     </div>
                     <span style={{ fontSize:14,fontFamily:FONT,flex:1,color:item.checked?C.textTertiary:C.text,textDecoration:item.checked?"line-through":"none",fontWeight:item.checked?400:500 }}>{item.text}</span>
-                    {item.fromMeal && !item.checked && <span style={{ fontSize:11,color:C.textTertiary,fontFamily:FONT,fontWeight:400 }}>from plan</span>}
                   </div>
                 ))}
               </div>

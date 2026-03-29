@@ -257,21 +257,19 @@ export function PlannerTab({
     <div>
       {/* Slider thumb styles — scoped to this component */}
       <style>{`
-        .ambition-slider { -webkit-appearance: none; appearance: none; outline: none; cursor: pointer; }
+        .ambition-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: transparent; cursor: pointer; }
+        .ambition-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #EDE8E3; }
         .ambition-slider::-webkit-slider-thumb {
           -webkit-appearance: none; appearance: none;
           width: 20px; height: 20px; border-radius: 50%;
-          background: #C0472A; border: none;
-          box-shadow: 0 2px 6px rgba(192,71,42,0.3);
-          margin-top: -8px;
+          background: #C0472A; margin-top: -8px;
+          box-shadow: 0 2px 6px rgba(192, 71, 42, 0.3);
         }
         .ambition-slider::-moz-range-thumb {
           width: 20px; height: 20px; border-radius: 50%;
           background: #C0472A; border: none;
-          box-shadow: 0 2px 6px rgba(192,71,42,0.3);
+          box-shadow: 0 2px 6px rgba(192, 71, 42, 0.3);
         }
-        .ambition-slider::-moz-range-progress { height: 4px; background: #C0472A; border-radius: 2px; }
-        .ambition-slider::-moz-range-track { height: 4px; background: #EDE8E3; border-radius: 2px; }
       `}</style>
 
       <PageHeader logo={<AppLogo />} />
