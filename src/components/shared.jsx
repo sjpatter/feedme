@@ -144,61 +144,66 @@ export function CollapsibleButton(props) {
 
 export function AppLogo() {
   /*
-   * viewBox 0 0 116 68
-   * Plate: cx=65 cy=34 r=28 → left x=37, right x=93, top y=6, bottom y=62
-   * Fork: 4 tines at x=18,21,24,27. Rightmost outer edge: 27.75. Gap to plate: 9.25px ✓
-   * Fork handle: x=22.5, y=24 to y=62 — matches plate height (56px)
-   * Knife blade: leftmost ≈ x=101 (cubic curve control). Gap from plate right: 8px ✓
-   * Knife handle: y=53 to y=62 — matches plate height
-   * Text centered inside plate at cx=65, cy=34
+   * viewBox 0 0 200 136 — displayed at width=140 height=95 (0.7× scale)
+   *
+   * Plate: cx=100 cy=68 r=58 → left x=42, right x=158, top y=10, bottom y=126 (diam=116)
+   * Fork: 3 tines x=10,16,22. Rightmost outer edge 22+0.9=22.9. Gap to plate: 19.1px ≈ 20 ✓
+   * Knife: cutting edge leftmost ≈ x=176. Gap from plate right (158): 18px ✓
+   * Fork + knife both span y=10–126, matching plate diameter (116px) ✓
+   * Text block center at y=68.5 ≈ cy=68 ✓
    */
   return (
-    <svg width="100" height="59" viewBox="0 0 116 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="140" height="95" viewBox="0 0 200 136" fill="none" xmlns="http://www.w3.org/2000/svg">
 
-      {/* Fork — 4 tines, height y:6-62 matches plate diameter */}
-      <line x1="18" y1="8"  x2="18" y2="20" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
-      <line x1="21" y1="6"  x2="21" y2="22" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
-      <line x1="24" y1="6"  x2="24" y2="22" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
-      <line x1="27" y1="8"  x2="27" y2="20" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M18 20 Q22.5 24.5 27 20" fill="none" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
-      <line x1="22.5" y1="24" x2="22.5" y2="62" stroke="#C0472A" strokeWidth="1.5" strokeLinecap="round"/>
+      {/* ── FORK ── 3 tines + base connector + handle, total height y:10-126 */}
+      {/* Three tines */}
+      <line x1="10" y1="10" x2="10" y2="36" stroke="#C0472A" strokeWidth="1.8" strokeLinecap="round"/>
+      <line x1="16" y1="10" x2="16" y2="45" stroke="#C0472A" strokeWidth="1.8" strokeLinecap="round"/>
+      <line x1="22" y1="10" x2="22" y2="36" stroke="#C0472A" strokeWidth="1.8" strokeLinecap="round"/>
+      {/* Base connector — outer tines curve into center */}
+      <path d="M10 36 C11 43 13 45 16 45" fill="none" stroke="#C0472A" strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M22 36 C21 43 19 45 16 45" fill="none" stroke="#C0472A" strokeWidth="1.8" strokeLinecap="round"/>
+      {/* Handle — thicker, runs from neck to plate bottom */}
+      <line x1="16" y1="44" x2="16" y2="126" stroke="#C0472A" strokeWidth="2.8" strokeLinecap="round"/>
 
-      {/* Plate — two concentric circles */}
-      <circle cx="65" cy="34" r="28" fill="#FDF0EC" stroke="#C0472A" strokeWidth="2"/>
-      <circle cx="65" cy="34" r="22" fill="none" stroke="#C0472A" strokeWidth="0.8" opacity="0.4"/>
+      {/* ── PLATE ── */}
+      <circle cx="100" cy="68" r="58" fill="#FDF0EC" stroke="#C0472A" strokeWidth="2"/>
+      <circle cx="100" cy="68" r="46" fill="white" stroke="#C0472A" strokeWidth="1.2" opacity="0.5"/>
 
-      {/* "PLAN MY" — small caps sans-serif, centered inside plate */}
+      {/* ── TEXT INSIDE PLATE ── */}
+      {/* "PLAN MY" — system-ui, 12px, 700, letter-spacing 1.8 */}
       <text
-        x="65" y="28"
+        x="100" y="54"
         textAnchor="middle"
         dominantBaseline="middle"
         fill="#C0472A"
-        fontSize="9"
+        fontSize="12"
         fontWeight="700"
         fontFamily="system-ui, -apple-system, sans-serif"
-        letterSpacing="1.5"
+        letterSpacing="1.8"
       >PLAN MY</text>
-
-      {/* "dinner" — italic Georgia, centered below */}
+      {/* "dinner" — Baskerville/Palatino/Georgia, 22px, italic, 700 */}
       <text
-        x="65" y="42"
+        x="100" y="78"
         textAnchor="middle"
         dominantBaseline="middle"
         fill="#C0472A"
-        fontSize="16"
+        fontSize="22"
         fontWeight="700"
         fontStyle="italic"
-        fontFamily="Georgia, 'Times New Roman', serif"
-        letterSpacing="-0.5"
+        fontFamily="'Baskerville', 'Book Antiqua', 'Palatino Linotype', 'Palatino', Georgia, serif"
       >dinner</text>
 
-      {/* Knife — blade left (cutting edge) curves slightly, spine right is straight */}
+      {/* ── KNIFE ── blade + bolster + handle, total height y:10-126 */}
+      {/* Blade — spine right straight, cutting edge left with subtle outward curve */}
       <path
-        d="M103 8 C101 22 101 40 102 52 L106 52 L105 8 Q104 6 103 8 Z"
+        d="M181 10 L176 13 C175 38 175 66 176 88 L181 88 Z"
         fill="#C0472A"
       />
-      {/* Knife handle — thicker to distinguish from blade */}
-      <line x1="104" y1="53" x2="104" y2="62" stroke="#C0472A" strokeWidth="4" strokeLinecap="round"/>
+      {/* Bolster — slightly wider, separates blade from handle */}
+      <rect x="174" y="88" width="10" height="11" rx="1" fill="#C0472A"/>
+      {/* Handle */}
+      <rect x="175" y="99" width="8" height="27" rx="3" fill="#C0472A"/>
     </svg>
   );
 }
