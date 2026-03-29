@@ -1,13 +1,61 @@
 import { useState, useEffect } from "react";
 import { callClaude, parseJSON, getMeals } from "../lib/api";
-import { UNSPECIFIED, SECTIONS } from "../lib/constants";
-import { C, FONT, INPUT_STYLE } from "../styles/tokens";
+import { C, FONT, INPUT_STYLE, SERIF } from "../styles/tokens";
 import { Btn, Card, SectionLabel, Divider, PageHeader, ErrorBanner, AppLogo, CollapsibleButton } from "../components/shared";
 import { MealCard } from "../components/MealCard";
 import { WeeklyReview } from "../components/WeeklyReview";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const DRAFT_KEY = (uid) => "pmd_draft_" + uid;
+
+// ── Cooking ambition levels ──────────────────────────────────────────────────
+const AMBITION_LEVELS = [
+  { max: 20,  label: "All quick",         title: "Quick meals every night — ≤30 min",   subtitle: "Fast, fuss-free cooking all week",                prompt: "All meals should be 30 minutes or less. Prioritise easy cleanup." },
+  { max: 40,  label: "Mostly quick",      title: "Mostly quick with one medium meal",    subtitle: "Mostly ≤30 min, one 45-60 min meal is fine",     prompt: "Mostly quick meals (≤30 min), one medium meal (45-60 min) is fine." },
+  { max: 60,  label: "Mix it up",         title: "A good mix of quick and medium",       subtitle: "Some ≤30 min, some 45-60 min meals",             prompt: "Mix of quick (≤30 min) and medium (45-60 min) meals. One involved meal (1-2 hrs) is welcome." },
+  { max: 80,  label: "Feeling ambitious", title: "Mix of medium and one involved meal",  subtitle: "Mostly 45-60 min, one or two 1-2 hr cooks",      prompt: "Mostly medium meals (45-60 min), include one or two involved meals (1-2 hrs)." },
+  { max: 100, label: "Go all out",        title: "Room for big cooks this week",         subtitle: "Several 1-2 hr meals — a real cooking week",     prompt: "Include several involved meals (1-2 hrs). This is a cooking week." },
+];
+
+const PROTEINS = ["Beef", "Lamb", "Pork", "Chicken", "Turkey", "Fish", "Shellfish"];
+
+function getAmbitionLevel(v) {
+  return AMBITION_LEVELS.find((l) => v <= l.max) ?? AMBITION_LEVELS[AMBITION_LEVELS.length - 1];
+}
+
+// ── Inline Stepper component ─────────────────────────────────────────────────
+function Stepper({ label, value, min, max, onChange }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
+      <span style={{ fontSize: 15, fontWeight: 600, color: C.text, fontFamily: FONT }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <button
+          onClick={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+          style={{
+            width: 30, height: 30, borderRadius: "50%", border: "1.5px solid #E8E8E8",
+            background: "#fff", color: "#666", fontSize: 18, lineHeight: 1,
+            cursor: value <= min ? "not-allowed" : "pointer", padding: 0, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            opacity: value <= min ? 0.4 : 1,
+          }}
+        >−</button>
+        <span style={{ fontSize: 17, fontWeight: 700, color: "#111", fontFamily: FONT, minWidth: 22, textAlign: "center" }}>{value}</span>
+        <button
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          style={{
+            width: 30, height: 30, borderRadius: "50%", border: "1.5px solid #C0472A",
+            background: "#FDF0EC", color: "#C0472A", fontSize: 18, lineHeight: 1,
+            cursor: value >= max ? "not-allowed" : "pointer", padding: 0, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            opacity: value >= max ? 0.4 : 1,
+          }}
+        >+</button>
+      </div>
+    </div>
+  );
+}
 
 export function PlannerTab({
   data,
@@ -22,12 +70,14 @@ export function PlannerTab({
   markPlanReviewed,
 }) {
   const [criteria, setCriteria] = useState({
-    totalDinners: 5, cookingNights: 4, newMeals: 2,
-    meatMeals: UNSPECIFIED, vegMeals: UNSPECIFIED,
-    noRedMeat: false,
-    babyFriendly: true, notes: "",
-    quickMeals: UNSPECIFIED, mediumMeals: UNSPECIFIED, involvedMeals: UNSPECIFIED,
-    easyCleanup: UNSPECIFIED,
+    totalDinners: 5,
+    cookingNights: 4,
+    newMeals: 2,
+    vegMeals: 0,
+    ambition: 40,
+    skippedProteins: [],
+    babyFriendly: true,
+    notes: "",
   });
   const [showCriteria, setShowCriteria] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -36,7 +86,6 @@ export function PlannerTab({
   const [generatedPlan, setGeneratedPlan] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [showFridge, setShowFridge] = useState(false);
   const [newFridgeItem, setNewFridgeItem] = useState("");
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [showReviewExpanded, setShowReviewExpanded] = useState(false);
@@ -48,10 +97,7 @@ export function PlannerTab({
       const raw = localStorage.getItem(DRAFT_KEY(userId));
       if (raw) {
         const draft = JSON.parse(raw);
-        if (draft && draft.meals) {
-          setGeneratedPlan(draft);
-          setShowCriteria(false);
-        }
+        if (draft && draft.meals) { setGeneratedPlan(draft); setShowCriteria(false); }
       }
     } catch {}
   }, [userId]);
@@ -76,17 +122,32 @@ export function PlannerTab({
     Date.now() - data.currentWeek.confirmedAt > SEVEN_DAYS_MS
   );
 
+  // ── Criteria helpers ────────────────────────────────────────────────────────
   function setC(k, v) { setCriteria((p) => Object.assign({}, p, { [k]: v })); }
-  function numOpt(max) { const o = [UNSPECIFIED]; for (let i = 0; i <= max; i++) o.push(i); return o; }
 
+  function setTotalDinners(v) {
+    setCriteria((p) => ({ ...p, totalDinners: v, cookingNights: Math.min(p.cookingNights, v) }));
+  }
+  function setCookingNights(v) {
+    setCriteria((p) => ({ ...p, cookingNights: v, newMeals: Math.min(p.newMeals, v), vegMeals: Math.min(p.vegMeals, v) }));
+  }
+  function setNewMeals(v) { setC("newMeals", v); }
+  function setVegMeals(v) { setC("vegMeals", v); }
+
+  function toggleProtein(p) {
+    setCriteria((prev) => ({
+      ...prev,
+      skippedProteins: prev.skippedProteins.includes(p)
+        ? prev.skippedProteins.filter((x) => x !== p)
+        : [...prev.skippedProteins, p],
+    }));
+  }
+
+  // ── Fridge ─────────────────────────────────────────────────────────────────
   async function handleAddFridgeItem() {
     if (!newFridgeItem.trim()) return;
-    try {
-      await addFridgeItem(newFridgeItem.trim());
-      setNewFridgeItem("");
-    } catch (e) {
-      showToast("Could not add item. Try again.", "error");
-    }
+    try { await addFridgeItem(newFridgeItem.trim()); setNewFridgeItem(""); }
+    catch (e) { showToast("Could not add item. Try again.", "error"); }
   }
 
   async function handleRemoveFridgeItem(id) {
@@ -94,6 +155,7 @@ export function PlannerTab({
     catch (e) { showToast("Could not remove item.", "error"); }
   }
 
+  // ── Prompt builder ──────────────────────────────────────────────────────────
   function buildPrompt() {
     const hasFav = data.recipes.length > 0;
     const favNames = hasFav ? data.recipes.map((r) => r.name).join(", ") : "none";
@@ -104,6 +166,7 @@ export function PlannerTab({
     const fridge = (data.fridgeItems || []).map((i) => i.text).join(", ") || "none";
     const profile = (data.tasteProfile || []).map((p) => p.text).join("; ") || "none";
     const skipped = (data.mealHistory || []).filter((h) => h.signal === "skip").slice(-10).map((h) => h.name).join(", ") || "none";
+    const ambitionLevel = getAmbitionLevel(criteria.ambition);
 
     return "Generate a weekly dinner plan.\n" +
       "Saved favorites: " + favNames + "\n" +
@@ -114,13 +177,9 @@ export function PlannerTab({
       "Total dinners: " + criteria.totalDinners + "\n" +
       "Cooking nights: " + criteria.cookingNights + "\n" +
       "New recipes: " + newCount + ", from favorites: " + fromFav + (!hasFav ? " (no favorites yet)" : "") + "\n" +
-      "Meat meals (at least): " + (criteria.meatMeals === UNSPECIFIED ? "your choice" : criteria.meatMeals) + "\n" +
-      "Vegetarian (at least): " + (criteria.vegMeals === UNSPECIFIED ? "your choice" : criteria.vegMeals) + "\n" +
-      (criteria.noRedMeat ? "NO RED MEAT: Strictly no beef, pork, or lamb. Chicken, fish, seafood, and vegetarian only.\n" : "") +
-      "Quick (<=30min): " + (criteria.quickMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.quickMeals) + "\n" +
-      "Medium (45-60min): " + (criteria.mediumMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.mediumMeals) + "\n" +
-      "Involved (1-2hr): " + (criteria.involvedMeals === UNSPECIFIED ? "your choice" : "at least " + criteria.involvedMeals) + "\n" +
-      "One-pot/sheet-pan: " + (criteria.easyCleanup === UNSPECIFIED ? "your choice" : "at least " + criteria.easyCleanup) + "\n" +
+      (criteria.vegMeals > 0 ? "Vegetarian meals (at least): " + criteria.vegMeals + "\n" : "") +
+      (criteria.skippedProteins.length > 0 ? "Do NOT use these proteins: " + criteria.skippedProteins.join(", ") + "\n" : "") +
+      "Cooking pace: " + ambitionLevel.prompt + "\n" +
       "Baby tips: " + (criteria.babyFriendly ? "yes" : "no") + "\n" +
       "Notes: " + (criteria.notes || "none") + "\n\n" +
       "Global cuisine variety: Draw from a wide range — Italian, Japanese, Mexican, Indian, Thai, Korean, Vietnamese, Mediterranean, Middle Eastern, French, American classics. Aim for variety across the week. Avoid two meals from the same cuisine.\n\n" +
@@ -128,11 +187,10 @@ export function PlannerTab({
       "Return ONLY JSON overview, no ingredients or steps:\n{\"meals\":[{\"name\":\"\",\"source\":\"\",\"sourceUrl\":\"\",\"isNew\":true,\"isMeat\":true,\"isVegetarian\":false,\"hasLeftovers\":false,\"leftoverDays\":0,\"cookTime\":30,\"difficulty\":\"easy\",\"isEasyCleanup\":false,\"description\":\"One sentence.\",\"babyNote\":\"One tip.\",\"usesFridgeItems\":[]}]}\ndifficulty=easy/intermediate/advanced.";
   }
 
+  // ── Plan actions (unchanged) ─────────────────────────────────────────────────
   async function generatePlan() {
-    // Warn before overwriting an existing confirmed plan
     if (data.currentWeek && data.currentWeek.confirmedAt && !showOverwriteConfirm) {
-      setShowOverwriteConfirm(true);
-      return;
+      setShowOverwriteConfirm(true); return;
     }
     setShowOverwriteConfirm(false);
     setLoading(true); setError(null);
@@ -159,14 +217,10 @@ export function PlannerTab({
       if (!raw) throw new Error("Empty response.");
       const meals = getMeals(parseJSON(raw));
       if (!meals) throw new Error("Response missing meals array.");
-
       const newSet = {};
       meals.forEach((m) => { newSet[m.name.toLowerCase()] = true; });
       const skippedMeals = (plan.meals || []).filter((m) => !newSet[m.name.toLowerCase()]);
-      if (skippedMeals.length > 0) {
-        try { await addMealSkips(skippedMeals); } catch (e) { /* non-critical */ }
-      }
-
+      if (skippedMeals.length > 0) { try { await addMealSkips(skippedMeals); } catch (e) { /* non-critical */ } }
       setGeneratedPlan({ meals });
       setLastGenerated({ meals, generatedAt: Date.now() });
       setFeedback("");
@@ -177,13 +231,8 @@ export function PlannerTab({
   async function handleConfirmPlan() {
     if (!plan || confirmingPlan) return;
     setConfirmingPlan(true);
-    try {
-      await confirmPlan(plan);
-      setGeneratedPlan(null);
-      showToast("Plan confirmed!");
-    } catch (e) {
-      showToast("Could not confirm plan. Try again.", "error");
-    }
+    try { await confirmPlan(plan); setGeneratedPlan(null); showToast("Plan confirmed!"); }
+    catch (e) { showToast("Could not confirm plan. Try again.", "error"); }
     setConfirmingPlan(false);
   }
 
@@ -191,12 +240,8 @@ export function PlannerTab({
     if (data.recipes.some((r) => r.name.toLowerCase() === meal.name.toLowerCase())) {
       showToast(meal.name + " is already in your favorites.", "error"); return;
     }
-    try {
-      await addRecipe(Object.assign({}, meal, details || {}));
-      showToast(meal.name + " saved to favorites!");
-    } catch (e) {
-      showToast("Could not save recipe.", "error");
-    }
+    try { await addRecipe(Object.assign({}, meal, details || {})); showToast(meal.name + " saved to favorites!"); }
+    catch (e) { showToast("Could not save recipe.", "error"); }
   }
 
   async function handleDismissReview() {
@@ -204,10 +249,35 @@ export function PlannerTab({
     catch (e) { /* non-critical */ }
   }
 
+  // ── Ambition slider data ────────────────────────────────────────────────────
+  const ambitionLevel = getAmbitionLevel(criteria.ambition);
+  const ambitionPct = criteria.ambition + "%";
+
   return (
     <div>
+      {/* Slider thumb styles — scoped to this component */}
+      <style>{`
+        .ambition-slider { -webkit-appearance: none; appearance: none; outline: none; cursor: pointer; }
+        .ambition-slider::-webkit-slider-thumb {
+          -webkit-appearance: none; appearance: none;
+          width: 20px; height: 20px; border-radius: 50%;
+          background: #C0472A; border: none;
+          box-shadow: 0 2px 6px rgba(192,71,42,0.3);
+          margin-top: -8px;
+        }
+        .ambition-slider::-moz-range-thumb {
+          width: 20px; height: 20px; border-radius: 50%;
+          background: #C0472A; border: none;
+          box-shadow: 0 2px 6px rgba(192,71,42,0.3);
+        }
+        .ambition-slider::-moz-range-progress { height: 4px; background: #C0472A; border-radius: 2px; }
+        .ambition-slider::-moz-range-track { height: 4px; background: #EDE8E3; border-radius: 2px; }
+      `}</style>
+
       <PageHeader logo={<AppLogo />} />
+
       <div style={{ padding: "0 1.25rem" }}>
+        {/* Weekly review banner */}
         {showWeeklyReview && (
           <div style={{ marginBottom: "1.25rem" }}>
             <CollapsibleButton
@@ -228,6 +298,7 @@ export function PlannerTab({
           </div>
         )}
 
+        {/* Back to options link */}
         {generatedPlan && !showCriteria && (
           <button
             onClick={() => setShowCriteria(true)}
@@ -237,105 +308,174 @@ export function PlannerTab({
           </button>
         )}
 
+        {/* ── CRITERIA FORM ──────────────────────────────────────────────────── */}
         {showCriteria && (
-          <Card style={{ marginBottom: "1.5rem", background: C.surfaceAlt }}>
-            <SectionLabel>Meals</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 8 }}>
-              {[["Total dinners","totalDinners",7],["Cooking nights","cookingNights",criteria.totalDinners],["New recipes","newMeals",criteria.cookingNights]].map((a) => (
-                <label key={a[1]} style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500 }}>
-                  {a[0]}
-                  <input type="number" min={a[1]==="newMeals"?0:1} max={a[2]} value={criteria[a[1]]} onChange={(e) => setC(a[1], parseInt(e.target.value)||0)} style={Object.assign({}, INPUT_STYLE, { marginTop: 5 })} />
-                </label>
-              ))}
+          <div style={{ marginBottom: "1.5rem" }}>
+
+            {/* Page heading */}
+            <div style={{ marginBottom: 20 }}>
+              <h1 style={{ fontFamily: SERIF, fontSize: 28, fontWeight: 700, margin: "0 0 4px", color: C.text, letterSpacing: "-0.5px" }}>Plan this week</h1>
+              <p style={{ fontSize: 14, color: C.textSecondary, margin: 0, fontFamily: FONT, fontWeight: 400 }}>Tell us what you're looking for</p>
             </div>
-            {!data.recipes.length && criteria.cookingNights > criteria.newMeals && (
-              <p style={{ fontSize: 12, color: C.infoNeutralText, fontFamily: FONT, margin: "0 0 8px", background: C.infoNeutralBg, borderRadius: 8, padding: "7px 10px", fontWeight: 400 }}>
-                {"No saved favorites yet — all " + criteria.cookingNights + " meals will be new suggestions."}
+
+            {/* ── MEALS ──────────────────────────────────────────────────────── */}
+            <Card style={{ marginBottom: 12, background: "#FFFFFF" }}>
+              <SectionLabel>Meals</SectionLabel>
+              <Stepper label="Total dinners" value={criteria.totalDinners} min={1} max={7} onChange={setTotalDinners} />
+              <Stepper label="Cooking nights" value={criteria.cookingNights} min={1} max={criteria.totalDinners} onChange={setCookingNights} />
+              <Stepper label="New recipes" value={criteria.newMeals} min={0} max={criteria.cookingNights} onChange={setNewMeals} />
+
+              {/* Info banners */}
+              {!data.recipes.length && criteria.cookingNights > criteria.newMeals && (
+                <p style={{ fontSize: 12, color: C.infoNeutralText, fontFamily: FONT, margin: "10px 0 0", background: C.infoNeutralBg, borderRadius: 8, padding: "7px 10px", fontWeight: 400 }}>
+                  {"No saved favorites yet — all " + criteria.cookingNights + " meals will be new suggestions."}
+                </p>
+              )}
+              {(criteria.totalDinners > criteria.cookingNights || (data.recipes.length > 0 && criteria.cookingNights > criteria.newMeals)) && (
+                <p style={{ fontSize: 12, color: C.infoAmberText, fontFamily: FONT, margin: "8px 0 0", background: C.infoAmberBg, borderRadius: 8, padding: "7px 10px", fontWeight: 400 }}>
+                  {[
+                    criteria.totalDinners > criteria.cookingNights
+                      ? (criteria.totalDinners - criteria.cookingNights) + " leftover night" + (criteria.totalDinners - criteria.cookingNights > 1 ? "s" : "") + " built in"
+                      : null,
+                    data.recipes.length > 0 && criteria.cookingNights > criteria.newMeals
+                      ? (criteria.cookingNights - criteria.newMeals) + " from favorites"
+                      : null,
+                  ].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </Card>
+
+            {/* ── COOKING AMBITION ───────────────────────────────────────────── */}
+            <Card style={{ marginBottom: 12, background: "#FFFFFF" }}>
+              <SectionLabel>Cooking ambition</SectionLabel>
+              <p style={{ margin: "0 0 14px", fontSize: 14, color: C.text, fontFamily: FONT, fontWeight: 500 }}>
+                How ambitious are you feeling this week?
               </p>
-            )}
-            {criteria.totalDinners > criteria.cookingNights && (
-              <p style={{ fontSize: 12, color: C.infoAmberText, fontFamily: FONT, margin: "0 0 8px", background: C.infoAmberBg, borderRadius: 8, padding: "7px 10px", fontWeight: 400 }}>
-                {(criteria.totalDinners - criteria.cookingNights) + " leftover night" + (criteria.totalDinners - criteria.cookingNights > 1 ? "s" : "") + " built in"}
-              </p>
-            )}
-            <Divider />
-            <SectionLabel>Dietary</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-              {[["Meat meals (at least)","meatMeals"],["Vegetarian (at least)","vegMeals"]].map((a) => (
-                <label key={a[1]} style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500 }}>
-                  {a[0]}
-                  <select value={criteria[a[1]]} onChange={(e) => setC(a[1], e.target.value===UNSPECIFIED?UNSPECIFIED:parseInt(e.target.value))} style={Object.assign({}, INPUT_STYLE, { marginTop: 5 })}>
-                    {numOpt(criteria.cookingNights).map((v) => <option key={v} value={v}>{v===UNSPECIFIED?"No preference":v}</option>)}
-                  </select>
-                </label>
-              ))}
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.textSecondary, cursor: "pointer", fontFamily: FONT, fontWeight: 500 }}>
-              <input type="checkbox" checked={criteria.noRedMeat} onChange={(e) => setC("noRedMeat", e.target.checked)} style={{ width: 18, height: 18, accentColor: C.primary, cursor: "pointer" }} />
-              No red meat (chicken, fish, and vegetarian only)
-            </label>
-            <Divider />
-            <SectionLabel>Cooking style</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-              {[["quickMeals","<=30 min","Quick"],["mediumMeals","45-60 min","Medium"],["involvedMeals","1-2 hrs","Involved"]].map((a) => {
-                const active = criteria[a[0]] !== UNSPECIFIED;
-                return (
-                  <div key={a[0]} style={{ background: active ? C.primaryLight : C.surface, border: "1.5px solid " + (active ? C.primaryMid : C.border), borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
-                    <p style={{ margin: "0 0 1px", fontSize: 13, fontWeight: 700, color: C.text, fontFamily: FONT }}>{a[2]}</p>
-                    <p style={{ margin: "0 0 8px", fontSize: 11, color: C.textTertiary, fontFamily: FONT, fontWeight: 400 }}>{a[1]}</p>
-                    <select value={criteria[a[0]]} onChange={(e) => setC(a[0], e.target.value===UNSPECIFIED?UNSPECIFIED:parseInt(e.target.value))} style={Object.assign({}, INPUT_STYLE, { fontSize: 13, padding: "6px 4px" })}>
-                      {numOpt(criteria.cookingNights).map((v) => <option key={v} value={v}>{v===UNSPECIFIED?"Any":">= "+v}</option>)}
-                    </select>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500, flex: 1 }}>One-pot / sheet-pan (at least)</span>
-              <select value={criteria.easyCleanup} onChange={(e) => setC("easyCleanup", e.target.value===UNSPECIFIED?UNSPECIFIED:parseInt(e.target.value))} style={Object.assign({}, INPUT_STYLE, { width: 150, flexShrink: 0 })}>
-                {numOpt(criteria.cookingNights).map((v) => <option key={v} value={v}>{v===UNSPECIFIED?"No preference":v}</option>)}
-              </select>
-            </div>
-            <Divider />
-            <button onClick={() => setShowFridge(!showFridge)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", padding: 0, marginBottom: showFridge ? 10 : 0 }}>
-              <SectionLabel style={{ margin: 0 }}>What's in the fridge?</SectionLabel>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {(data.fridgeItems||[]).length > 0 && <span style={{ fontSize: 11, color: C.primary, fontFamily: FONT, fontWeight: 700 }}>{(data.fridgeItems||[]).length + " items"}</span>}
-                <span style={{ fontSize: 11, color: C.textTertiary, fontWeight: 700 }}>{showFridge?"▲":"▼"}</span>
+              {/* Slider track + input */}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={criteria.ambition}
+                onChange={(e) => setC("ambition", Number(e.target.value))}
+                className="ambition-slider"
+                style={{
+                  width: "100%", height: 4, border: "none",
+                  background: `linear-gradient(to right, #C0472A ${ambitionPct}, #EDE8E3 ${ambitionPct})`,
+                  borderRadius: 2, display: "block", marginBottom: 8,
+                }}
+              />
+              {/* Scale labels */}
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                {["All quick", "Mix", "Go all out"].map((l) => (
+                  <span key={l} style={{ fontSize: 11, color: C.textTertiary, fontFamily: FONT, fontWeight: 500 }}>{l}</span>
+                ))}
               </div>
-            </button>
-            {showFridge && (
-              <div style={{ marginBottom: 4 }}>
-                <p style={{ fontSize: 12, color: C.textTertiary, margin: "0 0 10px", fontFamily: FONT, lineHeight: 1.5, fontWeight: 400 }}>Items here get factored into suggestions. Claude will mark which meals use them up.</p>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <input value={newFridgeItem} onChange={(e) => setNewFridgeItem(e.target.value)} onKeyDown={(e) => { if (e.key==="Enter") handleAddFridgeItem(); }} placeholder="e.g. rotisserie chicken, leftover rice..." style={Object.assign({}, INPUT_STYLE, { flex: 1 })} />
-                  <Btn small onClick={handleAddFridgeItem}>Add</Btn>
-                </div>
-                {(data.fridgeItems||[]).length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {(data.fridgeItems||[]).map((fi) => (
-                      <div key={fi.id} style={{ display: "flex", alignItems: "center", gap: 6, background: C.surface, border: "1px solid " + C.border, borderRadius: 99, padding: "4px 12px" }}>
-                        <span style={{ fontSize: 13, color: C.text, fontFamily: FONT, fontWeight: 400 }}>{fi.text}</span>
-                        <button onClick={() => handleRemoveFridgeItem(fi.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.textTertiary, padding: 0, lineHeight: 1 }}>x</button>
-                      </div>
-                    ))}
-                  </div>
+              {/* Live description */}
+              <div style={{ background: "#FDF0EC", borderRadius: 10, padding: "10px 12px" }}>
+                <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600, color: "#C0472A", fontFamily: FONT }}>{ambitionLevel.title}</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#C0472A", opacity: 0.7, fontFamily: FONT, fontWeight: 400 }}>{ambitionLevel.subtitle}</p>
+              </div>
+            </Card>
+
+            {/* ── DIETARY ────────────────────────────────────────────────────── */}
+            <Card style={{ marginBottom: 12, background: "#FFFFFF" }}>
+              <SectionLabel>Dietary</SectionLabel>
+              <div style={{ marginBottom: 16 }}>
+                <Stepper label="Vegetarian meals" value={criteria.vegMeals} min={0} max={criteria.cookingNights} onChange={setVegMeals} />
+              </div>
+              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: C.text, fontFamily: FONT }}>Skip these proteins</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {PROTEINS.map((p) => {
+                  const active = criteria.skippedProteins.includes(p);
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => toggleProtein(p)}
+                      style={{
+                        padding: "6px 14px", borderRadius: 20,
+                        border: active ? "1.5px solid #C0472A" : "1.5px solid #E8E8E8",
+                        background: active ? "#FDF0EC" : "#fff",
+                        color: active ? "#C0472A" : "#666",
+                        fontSize: 13, fontWeight: active ? 700 : 500,
+                        fontFamily: FONT, cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 5,
+                      }}
+                    >
+                      {active && <span style={{ fontSize: 11, fontWeight: 700 }}>✕</span>}
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* ── FRIDGE ─────────────────────────────────────────────────────── */}
+            <Card style={{ marginBottom: 12, background: "#FFFFFF" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <SectionLabel style={{ margin: 0 }}>What's in the fridge?</SectionLabel>
+                {(data.fridgeItems || []).length > 0 && (
+                  <span style={{ fontSize: 12, color: C.primary, fontFamily: FONT, fontWeight: 700 }}>
+                    {(data.fridgeItems || []).length + " item" + ((data.fridgeItems || []).length > 1 ? "s" : "")}
+                  </span>
                 )}
               </div>
-            )}
-            <Divider />
-            <SectionLabel>Other</SectionLabel>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.textSecondary, marginBottom: 14, cursor: "pointer", fontFamily: FONT, fontWeight: 500 }}>
-              <input type="checkbox" checked={criteria.babyFriendly} onChange={(e) => setC("babyFriendly", e.target.checked)} style={{ width: 18, height: 18, accentColor: C.primary, cursor: "pointer" }} />
-              Include baby-friendly adaptation tips
-            </label>
-            <label style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500, display: "block" }}>
-              Notes and requests
-              <textarea value={criteria.notes} onChange={(e) => setC("notes", e.target.value)} placeholder="e.g. something quick on Wednesday, avoid shellfish..." rows={2} style={Object.assign({}, INPUT_STYLE, { marginTop: 5, resize: "vertical", lineHeight: 1.6 })} />
-            </label>
+              {/* Existing items as pill tags */}
+              {(data.fridgeItems || []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                  {(data.fridgeItems || []).map((fi) => (
+                    <div key={fi.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F7F3EF", border: "1px solid #EDE8E3", borderRadius: 20, padding: "4px 10px 4px 12px" }}>
+                      <span style={{ fontSize: 13, color: C.text, fontFamily: FONT, fontWeight: 400 }}>{fi.text}</span>
+                      <button
+                        onClick={() => handleRemoveFridgeItem(fi.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.textTertiary, padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Add new item */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={newFridgeItem}
+                  onChange={(e) => setNewFridgeItem(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddFridgeItem(); }}
+                  placeholder="Add an ingredient..."
+                  style={Object.assign({}, INPUT_STYLE, { flex: 1 })}
+                />
+                <button
+                  onClick={handleAddFridgeItem}
+                  style={{
+                    background: "#FDF0EC", color: "#C0472A", border: "1.5px solid #E8A898",
+                    borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 700,
+                    fontFamily: FONT, cursor: "pointer", flexShrink: 0,
+                  }}
+                >Add</button>
+              </div>
+            </Card>
 
+            {/* ── OTHER ──────────────────────────────────────────────────────── */}
+            <Card style={{ marginBottom: 20, background: "#FFFFFF" }}>
+              <SectionLabel>Other</SectionLabel>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.textSecondary, marginBottom: 16, cursor: "pointer", fontFamily: FONT, fontWeight: 500 }}>
+                <input type="checkbox" checked={criteria.babyFriendly} onChange={(e) => setC("babyFriendly", e.target.checked)} style={{ width: 18, height: 18, accentColor: C.primary, cursor: "pointer" }} />
+                Baby-friendly tips
+              </label>
+              <label style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500, display: "block" }}>
+                Anything else?
+                <textarea
+                  value={criteria.notes}
+                  onChange={(e) => setC("notes", e.target.value)}
+                  placeholder="e.g. something quick on Wednesday, avoid shellfish..."
+                  rows={2}
+                  style={Object.assign({}, INPUT_STYLE, { marginTop: 8, resize: "vertical", lineHeight: 1.6 })}
+                />
+              </label>
+            </Card>
+
+            {/* Overwrite warning */}
             {showOverwriteConfirm && (
-              <div style={{ marginTop: 14, background: C.warningLight, border: "1px solid #FCD34D", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ marginBottom: 14, background: C.warningLight, border: "1px solid #FCD34D", borderRadius: 10, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 10px", fontSize: 13, color: C.infoAmberText, fontFamily: FONT, fontWeight: 500, lineHeight: 1.5 }}>
                   You already have a confirmed plan. A new plan will be saved as a draft — you'll still need to confirm it to replace the current one.
                 </p>
@@ -347,16 +487,28 @@ export function PlannerTab({
             )}
 
             <ErrorBanner message={error} />
+
+            {/* Generate button */}
             {!showOverwriteConfirm && (
-              <div style={{ marginTop: 14 }}>
-                <Btn fullWidth onClick={generatePlan} disabled={loading} variant="primary">
-                  {loading ? "Generating your plan..." : "Generate meal plan"}
-                </Btn>
-              </div>
+              <button
+                onClick={generatePlan}
+                disabled={loading}
+                style={{
+                  width: "100%", background: loading ? "#C0472A" : "#C0472A", color: "#fff",
+                  border: "none", borderRadius: 14, padding: "14px 20px",
+                  fontSize: 16, fontWeight: 700, fontFamily: FONT,
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.7 : 1, letterSpacing: "-0.01em",
+                  boxSizing: "border-box", marginTop: error ? 10 : 0,
+                }}
+              >
+                {loading ? "Generating your plan..." : "Generate meal plan"}
+              </button>
             )}
-          </Card>
+          </div>
         )}
 
+        {/* ── PLAN DISPLAY (unchanged) ─────────────────────────────────────── */}
         {plan && plan.meals && (
           <div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: "1.25rem" }}>
@@ -379,7 +531,7 @@ export function PlannerTab({
               <div style={{ marginBottom: "1.5rem" }}>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Feedback? e.g. swap one for something vegetarian..." rows={2} style={Object.assign({}, INPUT_STYLE, { flex: 1, resize: "vertical" })} />
-                  <Btn onClick={applyFeedback} disabled={feedbackLoading||!feedback.trim()} variant="soft" small>{feedbackLoading?"...":"Revise"}</Btn>
+                  <Btn onClick={applyFeedback} disabled={feedbackLoading || !feedback.trim()} variant="soft" small>{feedbackLoading ? "..." : "Revise"}</Btn>
                 </div>
                 <ErrorBanner message={error} />
                 <div style={{ marginTop: error ? 10 : 0 }}>
