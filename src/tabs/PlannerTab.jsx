@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { callClaude, parseJSON, getMeals } from "../lib/api";
 import { C, FONT, INPUT_STYLE, SERIF } from "../styles/tokens";
-import { Btn, Card, SectionLabel, Divider, PageHeader, ErrorBanner, AppLogo, CollapsibleButton } from "../components/shared";
+import { Btn, Card, SectionLabel, Divider, PageHeader, ErrorBanner, AppLogo, CollapsibleButton, Tag } from "../components/shared";
 import { MealCard } from "../components/MealCard";
 import { WeeklyReview } from "../components/WeeklyReview";
 
@@ -50,6 +50,59 @@ function Stepper({ label, subtitle, value, min, max, onChange }) {
   );
 }
 
+// Compact meal card for the confirmed plan view
+function ConfirmedMealCard({ meal, babyFriendly, onAddFavorite, alreadySaved }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ border: "1px solid #EDE8E3", borderRadius: 12, overflow: "hidden", marginBottom: 8, background: "#fff" }}>
+      <div
+        style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", cursor: "pointer" }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Tags row */}
+          {meal.isLocked && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, background: "#F3F4F6", color: "#6B7280", borderRadius: 20, padding: "2px 8px", fontFamily: FONT, letterSpacing: "0.04em", display: "inline-block" }}>YOUR PICK</span>
+            </div>
+          )}
+          {!meal.isLocked && (
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+              {meal.isVegetarian && <Tag label="veggie" color="teal" />}
+              {meal.isMeat && !meal.isVegetarian && <Tag label="meat" color="warning" />}
+              {meal.isNew && <Tag label="new" color="primary" />}
+              {meal.isEasyCleanup && <Tag label="easy cleanup" color="teal" />}
+            </div>
+          )}
+          <p style={{ margin: "0 0 2px", fontFamily: SERIF, fontSize: 14, fontWeight: 700, color: C.text, letterSpacing: "-0.01em" }}>{meal.name}</p>
+          {meal.source && (
+            <p style={{ margin: 0, fontSize: 11, color: "#C0472A", fontFamily: FONT, fontWeight: 600 }}>
+              {meal.sourceUrl
+                ? <a href={meal.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "#C0472A", textDecoration: "none" }}>{meal.source} ↗</a>
+                : meal.source}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 6px", color: C.textTertiary, fontSize: 11, flexShrink: 0, fontFamily: FONT, fontWeight: 700 }}
+        >{expanded ? "▲" : "▼"}</button>
+      </div>
+      {expanded && (
+        <div style={{ borderTop: "1px solid #EDE8E3" }}>
+          <MealCard
+            meal={meal}
+            showFavorite={!!meal.isNew}
+            showBabyNote={babyFriendly}
+            onAddFavorite={onAddFavorite}
+            alreadySaved={alreadySaved}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PlannerTab({
   data,
   userId,
@@ -61,18 +114,19 @@ export function PlannerTab({
   setLastGenerated,
   addRecipe,
   markPlanReviewed,
+  onNavigateToGrocery,
 }) {
   const [criteria, setCriteria] = useState({
     totalDinners: 5,
-    newMeals: 2,
-    vegMeals: 0,
     ambition: 40,
     skippedProteins: [],
+    vegPreference: null, // null | "include" | "only"
     babyFriendly: true,
     notes: "",
   });
 
   const [step, setStep] = useState(1); // 1 = start, 2 = fill, 3 = review
+  const [planningNew, setPlanningNew] = useState(false); // override confirmed view
   const [lockedMeals, setLockedMeals] = useState([]);
   const [suggestedMeals, setSuggestedMeals] = useState([]);
 
@@ -99,7 +153,7 @@ export function PlannerTab({
       if (raw) {
         const draft = JSON.parse(raw);
         if (draft && draft.version === 2) {
-          if (draft.criteria) setCriteria(draft.criteria);
+          if (draft.criteria) setCriteria((prev) => ({ ...prev, ...draft.criteria }));
           if (draft.lockedMeals) setLockedMeals(draft.lockedMeals);
           if (draft.suggestedMeals) setSuggestedMeals(draft.suggestedMeals);
           if (draft.step) setStep(draft.step);
@@ -132,12 +186,18 @@ export function PlannerTab({
     return "Claude will avoid: " + [...new Set(allReasons)].map((r) => r.toLowerCase()).join(", ");
   })();
 
-  const showWeeklyReview = !!(
-    data.currentWeek &&
+  // Show confirmed plan when: there's a confirmed week, no active draft, not explicitly planning new
+  const showConfirmedPlan = !!(
     step === 1 &&
-    suggestedMeals.length === 0 &&
+    data.currentWeek?.confirmedAt &&
+    !planningNew &&
+    lockedMeals.length === 0 &&
+    suggestedMeals.length === 0
+  );
+
+  const showWeeklyReview = !!(
+    showConfirmedPlan &&
     !data.currentWeek.reviewedAt &&
-    data.currentWeek.confirmedAt &&
     Date.now() - data.currentWeek.confirmedAt > SEVEN_DAYS_MS
   );
 
@@ -145,13 +205,8 @@ export function PlannerTab({
   function setC(k, v) { setCriteria((p) => ({ ...p, [k]: v })); }
 
   function setTotalDinners(v) {
-    const newRemaining = Math.max(0, v - lockedMeals.length);
-    setCriteria((p) => ({
-      ...p,
-      totalDinners: v,
-      newMeals: Math.min(p.newMeals, newRemaining),
-      vegMeals: Math.min(p.vegMeals, newRemaining),
-    }));
+    setLockedMeals((prev) => prev.slice(0, v)); // trim if locked meals exceed new total
+    setCriteria((p) => ({ ...p, totalDinners: v }));
   }
 
   function toggleProtein(p) {
@@ -161,6 +216,10 @@ export function PlannerTab({
         ? prev.skippedProteins.filter((x) => x !== p)
         : [...prev.skippedProteins, p],
     }));
+  }
+
+  function setVegPreference(val) {
+    setCriteria((prev) => ({ ...prev, vegPreference: prev.vegPreference === val ? null : val }));
   }
 
   // ── Fridge ──────────────────────────────────────────────────────────────────
@@ -178,14 +237,7 @@ export function PlannerTab({
   // ── Locked meals ────────────────────────────────────────────────────────────
   function addLockedMeal(meal) {
     if (lockedMeals.length >= criteria.totalDinners) return;
-    const newLocked = [...lockedMeals, { ...meal, id: nextId(), isLocked: true }];
-    const newRemaining = Math.max(0, criteria.totalDinners - newLocked.length);
-    setLockedMeals(newLocked);
-    setCriteria((p) => ({
-      ...p,
-      newMeals: Math.min(p.newMeals, newRemaining),
-      vegMeals: Math.min(p.vegMeals, newRemaining),
-    }));
+    setLockedMeals((prev) => [...prev, { ...meal, id: nextId(), isLocked: true }]);
   }
 
   function removeLockedMeal(id) {
@@ -226,10 +278,6 @@ export function PlannerTab({
 
   // ── Prompt builders ─────────────────────────────────────────────────────────
   function buildPrompt() {
-    const hasFav = data.recipes.length > 0;
-    const favNames = hasFav ? data.recipes.map((r) => r.name).join(", ") : "none";
-    const fromFav = hasFav ? Math.max(0, remainingSlots - criteria.newMeals) : 0;
-    const newCount = hasFav ? criteria.newMeals : remainingSlots;
     const allPastMeals = (data.weeklyPlans || []).reduce((a, w) => a.concat((w.meals || []).map((m) => m.name)), []).join(", ") || "none";
     const fridge = (data.fridgeItems || []).map((i) => i.text).join(", ") || "none";
     const profile = (data.tasteProfile || []).map((p) => p.text).join("; ") || "none";
@@ -237,6 +285,11 @@ export function PlannerTab({
     const lockedList = lockedMeals.length > 0
       ? lockedMeals.map((m) => `- ${m.name}${m.source ? " (" + m.source + ")" : ""}`).join("\n")
       : "none";
+    const vegLine = criteria.vegPreference === "only"
+      ? "All suggested meals should be vegetarian.\n"
+      : criteria.vegPreference === "include"
+      ? "Include at least one vegetarian meal.\n"
+      : "";
 
     return `Generate ${remainingSlots} dinner suggestion${remainingSlots !== 1 ? "s" : ""} to complete this week's meal plan.\n\n` +
       `Already locked in for this week (DO NOT suggest these or similar dishes):\n${lockedList}\n\n` +
@@ -246,9 +299,7 @@ export function PlannerTab({
       `Previously skipped (don't suggest): ${skipped}\n` +
       `Taste profile: ${profile}\n` +
       `Fridge items to use: ${fridge}\n\n` +
-      `New recipes: ${newCount}, from favorites: ${fromFav}${!hasFav ? " (no favorites yet)" : ""}\n` +
-      `Saved favorites: ${favNames}\n` +
-      (criteria.vegMeals > 0 ? `Vegetarian meals (at least): ${criteria.vegMeals}\n` : "") +
+      vegLine +
       (criteria.skippedProteins.length > 0 ? `Do NOT use these proteins: ${criteria.skippedProteins.join(", ")}\n` : "") +
       `Cooking pace: ${ambitionLevel.prompt}\n` +
       `Baby tips: ${criteria.babyFriendly ? "yes" : "no"}\n` +
@@ -268,6 +319,11 @@ export function PlannerTab({
     const allPastMeals = (data.weeklyPlans || []).reduce((a, w) => a.concat((w.meals || []).map((m) => m.name)), []).join(", ") || "none";
     const fridge = (data.fridgeItems || []).map((i) => i.text).join(", ") || "none";
     const profile = (data.tasteProfile || []).map((p) => p.text).join("; ") || "none";
+    const vegLine = criteria.vegPreference === "only"
+      ? "All suggested meals should be vegetarian.\n"
+      : criteria.vegPreference === "include"
+      ? "Include at least one vegetarian meal.\n"
+      : "";
     const n = rejectedMeals.length;
 
     return `Replace ${n} meal${n !== 1 ? "s" : ""} in this week's plan.\n\n` +
@@ -277,6 +333,7 @@ export function PlannerTab({
       `Avoid these recently confirmed meals: ${allPastMeals}\n` +
       `Taste profile: ${profile}\n` +
       `Fridge items to use: ${fridge}\n` +
+      vegLine +
       (criteria.skippedProteins.length > 0 ? `Do NOT use these proteins: ${criteria.skippedProteins.join(", ")}\n` : "") +
       `Cooking pace: ${ambitionLevel.prompt}\n` +
       `Baby tips: ${criteria.babyFriendly ? "yes" : "no"}\n` +
@@ -372,11 +429,20 @@ export function PlannerTab({
       await confirmPlan({ meals: planMeals });
       setLockedMeals([]);
       setSuggestedMeals([]);
+      setPlanningNew(false);
       setStep(1);
       localStorage.removeItem(DRAFT_KEY(userId));
       showToast("Plan confirmed!");
     } catch { showToast("Could not confirm plan. Try again.", "error"); }
     setConfirmLoading(false);
+  }
+
+  function handlePlanNewWeek() {
+    setLockedMeals([]);
+    setSuggestedMeals([]);
+    setStep(1);
+    setPlanningNew(true);
+    setError(null);
   }
 
   async function handleAddToFavorites(meal, details) {
@@ -404,6 +470,19 @@ export function PlannerTab({
     padding: "0 0 12px", display: "flex", alignItems: "center", gap: 4,
   };
 
+  // ── Veg preference chip style helper ─────────────────────────────────────────
+  function vegChipStyle(val) {
+    const active = criteria.vegPreference === val;
+    return {
+      padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontFamily: FONT,
+      fontWeight: active ? 700 : 500,
+      background: active ? "#E1F5EE" : "#fff",
+      border: active ? "1.5px solid #0D9488" : "1.5px solid #E8E8E8",
+      color: active ? "#0D9488" : "#666",
+      display: "flex", alignItems: "center", gap: 5,
+    };
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div>
@@ -418,29 +497,85 @@ export function PlannerTab({
 
       <div style={{ padding: "0 1.25rem" }}>
 
-        {/* Weekly review banner */}
-        {showWeeklyReview && (
-          <div style={{ marginBottom: "1.25rem" }}>
-            <CollapsibleButton
-              label="Time to review this week's meals"
-              sublabel="Save what you loved to your favorites"
-              isOpen={showReviewExpanded}
-              onToggle={() => setShowReviewExpanded(!showReviewExpanded)}
-            />
-            {showReviewExpanded && (
-              <WeeklyReview
-                plan={data.currentWeek}
-                recipes={data.recipes}
-                onAddRecipe={(meal) => handleAddToFavorites(meal, null)}
-                onDismiss={handleDismissReview}
-                showToast={showToast}
-              />
+        {/* ── CONFIRMED PLAN VIEW ─────────────────────────────────────────── */}
+        {showConfirmedPlan && (
+          <div style={{ marginBottom: "1.5rem" }}>
+
+            {/* Weekly review banner */}
+            {showWeeklyReview && (
+              <div style={{ marginBottom: "1.25rem" }}>
+                <CollapsibleButton
+                  label="Time to review this week's meals"
+                  sublabel="Save what you loved to your favorites"
+                  isOpen={showReviewExpanded}
+                  onToggle={() => setShowReviewExpanded(!showReviewExpanded)}
+                />
+                {showReviewExpanded && (
+                  <WeeklyReview
+                    plan={data.currentWeek}
+                    recipes={data.recipes}
+                    onAddRecipe={(meal) => handleAddToFavorites(meal, null)}
+                    onDismiss={handleDismissReview}
+                    showToast={showToast}
+                  />
+                )}
+              </div>
             )}
+
+            {/* Header row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div>
+                <h1 style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 700, margin: "0 0 2px", color: C.text, letterSpacing: "-0.3px" }}>This week</h1>
+                <p style={{ fontSize: 11, color: "#AAA", margin: 0, fontFamily: FONT, fontWeight: 400 }}>
+                  {(data.currentWeek.meals || []).length} dinner{(data.currentWeek.meals || []).length !== 1 ? "s" : ""} confirmed
+                </p>
+              </div>
+              <button
+                onClick={handlePlanNewWeek}
+                style={{ background: "#FDF0EC", color: "#C0472A", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: 13, fontWeight: 700, fontFamily: FONT, cursor: "pointer", flexShrink: 0 }}
+              >Plan new week</button>
+            </div>
+
+            {/* Meal cards */}
+            {(data.currentWeek.meals || []).map((meal, i) => {
+              const rows = [];
+              rows.push(
+                <ConfirmedMealCard
+                  key={meal.id || meal.name || i}
+                  meal={meal}
+                  babyFriendly={criteria.babyFriendly}
+                  onAddFavorite={(d) => handleAddToFavorites(meal, d)}
+                  alreadySaved={data.recipes.some((r) => r.name.toLowerCase() === meal.name.toLowerCase())}
+                />
+              );
+              if (meal.hasLeftovers && meal.leftoverDays > 0) {
+                for (let d = 0; d < meal.leftoverDays; d++) {
+                  rows.push(
+                    <div key={`leftover-${i}-${d}`} style={{ border: "1px solid #EDE8E3", borderRadius: 12, padding: "12px 14px", marginBottom: 8, background: "#FAFAF9", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16 }}>🔄</span>
+                      <p style={{ margin: 0, fontSize: 13, color: C.textTertiary, fontFamily: FONT, fontWeight: 400 }}>Leftover night — from earlier in the week</p>
+                    </div>
+                  );
+                }
+              }
+              return rows;
+            })}
+
+            {/* Grocery nudge */}
+            <div style={{ background: "#E1F5EE", border: "1px solid #99F6E4", borderRadius: 14, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#0D9488", fontFamily: FONT }}>Ready to build your grocery list?</p>
+              {onNavigateToGrocery && (
+                <button
+                  onClick={onNavigateToGrocery}
+                  style={{ background: "#0D9488", color: "#fff", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: 13, fontWeight: 700, fontFamily: FONT, cursor: "pointer", flexShrink: 0 }}
+                >Go →</button>
+              )}
+            </div>
           </div>
         )}
 
         {/* ── STEP 1: Start your week ─────────────────────────────────────── */}
-        {step === 1 && (
+        {step === 1 && !showConfirmedPlan && (
           <div style={{ marginBottom: "1.5rem" }}>
             <div style={{ marginBottom: 20 }}>
               <h1 style={{ fontFamily: SERIF, fontSize: 28, fontWeight: 700, margin: "0 0 4px", color: C.text, letterSpacing: "-0.5px" }}>Plan this week</h1>
@@ -531,10 +666,7 @@ export function PlannerTab({
               )}
             </Card>
 
-            <button
-              onClick={handleContinueToStep2}
-              style={primaryBtn}
-            >
+            <button onClick={handleContinueToStep2} style={primaryBtn}>
               {lockedMeals.length === criteria.totalDinners
                 ? "My week is full — confirm plan →"
                 : lockedMeals.length === 0
@@ -585,11 +717,8 @@ export function PlannerTab({
             {/* Dietary */}
             <Card style={{ marginBottom: 12 }}>
               <SectionLabel>Dietary</SectionLabel>
-              <Stepper label="New recipes" value={criteria.newMeals} min={0} max={remainingSlots} onChange={(v) => setC("newMeals", v)} />
-              <Stepper label="Vegetarian meals" value={criteria.vegMeals} min={0} max={remainingSlots} onChange={(v) => setC("vegMeals", v)} />
-              <Divider />
               <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: C.text, fontFamily: FONT }}>Skip these proteins</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                 {PROTEINS.map((p) => {
                   const active = criteria.skippedProteins.includes(p);
                   return (
@@ -604,45 +733,70 @@ export function PlannerTab({
                   );
                 })}
               </div>
-            </Card>
-
-            {/* Fridge */}
-            <Card style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <SectionLabel style={{ margin: 0 }}>What's in the fridge?</SectionLabel>
-                {(data.fridgeItems || []).length > 0 && (
-                  <span style={{ fontSize: 12, color: C.primary, fontFamily: FONT, fontWeight: 700 }}>
-                    {(data.fridgeItems || []).length + " item" + ((data.fridgeItems || []).length > 1 ? "s" : "")}
-                  </span>
-                )}
-              </div>
-              {(data.fridgeItems || []).length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                  {(data.fridgeItems || []).map((fi) => (
-                    <div key={fi.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F7F3EF", border: "1px solid #EDE8E3", borderRadius: 20, padding: "4px 10px 4px 12px" }}>
-                      <span style={{ fontSize: 13, color: C.text, fontFamily: FONT, fontWeight: 400 }}>{fi.text}</span>
-                      <button onClick={() => handleRemoveFridgeItem(fi.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.textTertiary, padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 8 }}>
-                <input value={newFridgeItem} onChange={(e) => setNewFridgeItem(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddFridgeItem(); }} placeholder="Add an ingredient..." style={Object.assign({}, INPUT_STYLE, { flex: 1 })} />
-                <button onClick={handleAddFridgeItem} style={{ background: "#FDF0EC", color: "#C0472A", border: "1.5px solid #E8A898", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 700, fontFamily: FONT, cursor: "pointer", flexShrink: 0 }}>Add</button>
+              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: C.text, fontFamily: FONT }}>Vegetarian preference</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button onClick={() => setVegPreference("include")} style={vegChipStyle("include")}>
+                  {criteria.vegPreference === "include" && <span style={{ fontSize: 11 }}>✓</span>}
+                  Include a veggie meal
+                </button>
+                <button onClick={() => setVegPreference("only")} style={vegChipStyle("only")}>
+                  {criteria.vegPreference === "only" && <span style={{ fontSize: 11 }}>✓</span>}
+                  Veggie meals only
+                </button>
               </div>
             </Card>
 
-            {/* Other */}
+            {/* Anything else? — fridge + baby + notes */}
             <Card style={{ marginBottom: 20 }}>
-              <SectionLabel>Other</SectionLabel>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.textSecondary, marginBottom: 16, cursor: "pointer", fontFamily: FONT, fontWeight: 500 }}>
-                <input type="checkbox" checked={criteria.babyFriendly} onChange={(e) => setC("babyFriendly", e.target.checked)} style={{ width: 18, height: 18, accentColor: C.primary, cursor: "pointer" }} />
-                Baby-friendly tips
-              </label>
-              <label style={{ fontSize: 13, color: C.textSecondary, fontFamily: FONT, fontWeight: 500, display: "block" }}>
-                Anything else?
-                <textarea value={criteria.notes} onChange={(e) => setC("notes", e.target.value)} placeholder="e.g. something quick on Wednesday, avoid shellfish..." rows={2} style={Object.assign({}, INPUT_STYLE, { marginTop: 8, resize: "vertical", lineHeight: 1.6 })} />
-              </label>
+              <div style={{ marginBottom: 14 }}>
+                <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 700, color: C.text, fontFamily: FONT }}>Anything else?</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#AAA", fontFamily: FONT, fontWeight: 400 }}>All optional — but helpful</p>
+              </div>
+
+              {/* Fridge items */}
+              <div>
+                <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: C.textTertiary, fontFamily: FONT, textTransform: "uppercase", letterSpacing: "0.06em" }}>What's in the fridge?</p>
+                {(data.fridgeItems || []).length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                    {(data.fridgeItems || []).map((fi) => (
+                      <div key={fi.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F7F3EF", border: "1px solid #EDE8E3", borderRadius: 20, padding: "4px 10px 4px 12px" }}>
+                        <span style={{ fontSize: 13, color: C.text, fontFamily: FONT, fontWeight: 400 }}>{fi.text}</span>
+                        <button onClick={() => handleRemoveFridgeItem(fi.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.textTertiary, padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={newFridgeItem} onChange={(e) => setNewFridgeItem(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddFridgeItem(); }} placeholder="Add an ingredient..." style={Object.assign({}, INPUT_STYLE, { flex: 1 })} />
+                  <button onClick={handleAddFridgeItem} style={{ background: "#FDF0EC", color: "#C0472A", border: "1.5px solid #E8A898", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 700, fontFamily: FONT, cursor: "pointer", flexShrink: 0 }}>Add</button>
+                </div>
+              </div>
+
+              <Divider />
+
+              {/* Baby-friendly */}
+              <div>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                  <input type="checkbox" checked={criteria.babyFriendly} onChange={(e) => setC("babyFriendly", e.target.checked)} style={{ width: 18, height: 18, accentColor: C.primary, cursor: "pointer", marginTop: 2, flexShrink: 0 }} />
+                  <div>
+                    <p style={{ margin: 0, fontSize: 13, color: C.text, fontFamily: FONT, fontWeight: 600 }}>Baby-friendly tips</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#AAA", fontFamily: FONT, fontWeight: 400 }}>Adaptations for little ones</p>
+                  </div>
+                </label>
+              </div>
+
+              <Divider />
+
+              {/* Free-text notes */}
+              <div>
+                <textarea
+                  value={criteria.notes}
+                  onChange={(e) => setC("notes", e.target.value)}
+                  placeholder="Special requests, constraints, cravings..."
+                  rows={2}
+                  style={Object.assign({}, INPUT_STYLE, { resize: "vertical", lineHeight: 1.6 })}
+                />
+              </div>
             </Card>
 
             {showOverwriteConfirm && (
