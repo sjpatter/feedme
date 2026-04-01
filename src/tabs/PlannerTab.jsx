@@ -115,6 +115,7 @@ export function PlannerTab({
   addRecipe,
   markPlanReviewed,
   onNavigateToGrocery,
+  buildGroceryFromPlan,
 }) {
   const [criteria, setCriteria] = useState({
     totalDinners: 5,
@@ -129,6 +130,7 @@ export function PlannerTab({
   const [planningNew, setPlanningNew] = useState(false); // override confirmed view
   const [lockedMeals, setLockedMeals] = useState([]);
   const [suggestedMeals, setSuggestedMeals] = useState([]);
+  const [sessionRejectedMeals, setSessionRejectedMeals] = useState([]); // hard block for the session
 
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -276,6 +278,15 @@ export function PlannerTab({
     setUrlLoading(false);
   }
 
+  // ── Shared prompt fragments ──────────────────────────────────────────────────
+  const SOURCING_INSTRUCTIONS = `VARIETY IS THE TOP PRIORITY. Actively vary the meals across cuisines, proteins, and cooking styles. As a general guideline, avoid suggesting two meals from the same cuisine — but this is a guideline, not a hard rule. Two Italian dishes in the same week is fine as long as they are genuinely different (e.g. a braised meat dish and a vegetable-forward pasta are fine together; two pasta dishes are not). Never suggest two meals that are essentially the same dish.
+
+Recipe quality: suggest the iconic, most celebrated version of each dish — the recipe that food lovers would recognise as the definitive take. Draw from the widest possible pool of sources. Anchor sources include: Alison Roman, Rick Bayless, Momofuku/David Chang, Kenji Lopez-Alt (Serious Eats), Smitten Kitchen, Ottolenghi, Bon Appétit, NYT Cooking, Food52, Nigella Lawson, Jamie Oliver, Hetty McKinnon, Madhur Jaffrey, Diana Henry, Nick Sharma, The Kitchn, Ina Garten, Joshua Weissman. But do not over-index on these — draw from any authoritative source that makes the most celebrated version of a given dish. Vary sources across the plan.
+
+Avoid defaulting to greatest hits. Do not repeatedly suggest the same popular dishes (cacio e pepe, shakshuka, roasted chicken thighs, sheet pan salmon etc.) across sessions. Push for genuine variety and discovery — mostly familiar dishes done really well, with occasional new discoveries the user may not have encountered before.
+
+For each dish: ask "who makes the most celebrated, most-shared version of this?" and suggest that. Only include sourceUrl if you are confident it is correct.`;
+
   // ── Prompt builders ─────────────────────────────────────────────────────────
   function buildPrompt() {
     const allPastMeals = (data.weeklyPlans || []).reduce((a, w) => a.concat((w.meals || []).map((m) => m.name)), []).join(", ") || "none";
@@ -290,13 +301,17 @@ export function PlannerTab({
       : criteria.vegPreference === "include"
       ? "Include at least one vegetarian meal.\n"
       : "";
+    const hardBlock = sessionRejectedMeals.length > 0
+      ? `Do not suggest any of these dishes in any form, regardless of source, variation, or preparation style: ${sessionRejectedMeals.join(", ")}. If a dish has the same name or is clearly the same dish as one on this list, do not suggest it even if the source is different.\n\n`
+      : "";
 
     return `Generate ${remainingSlots} dinner suggestion${remainingSlots !== 1 ? "s" : ""} to complete this week's meal plan.\n\n` +
+      hardBlock +
       `Already locked in for this week (DO NOT suggest these or similar dishes):\n${lockedList}\n\n` +
       `Remaining slots to fill: ${remainingSlots}\n\n` +
       `Avoid repeating proteins or cuisines already represented in the locked meals above.\n` +
       `Avoid these recently confirmed meals: ${allPastMeals}\n` +
-      `Previously skipped (don't suggest): ${skipped}\n` +
+      `These meals have been skipped in recent weeks — use them to understand taste preferences and avoid similar dishes, but do not treat them as permanent bans: ${skipped}\n` +
       `Taste profile: ${profile}\n` +
       `Fridge items to use: ${fridge}\n\n` +
       vegLine +
@@ -304,8 +319,7 @@ export function PlannerTab({
       `Cooking pace: ${ambitionLevel.prompt}\n` +
       `Baby tips: ${criteria.babyFriendly ? "yes" : "no"}\n` +
       `Notes: ${criteria.notes || "none"}\n\n` +
-      `Global cuisine variety: Draw from a wide range — Italian, Japanese, Mexican, Indian, Thai, Korean, Vietnamese, Mediterranean, Middle Eastern, French, American classics. Aim for variety across the week. Avoid two meals from the same cuisine.\n\n` +
-      `Recipe sourcing: Prioritize iconic, celebrated versions — Kenji Lopez-Alt, Smitten Kitchen, Ottolenghi, Bon Appétit, Serious Eats, NYT Cooking, Food52, Ina Garten, The Kitchn. Vary sources. Only include sourceUrl if confident it's correct.\n\n` +
+      SOURCING_INSTRUCTIONS + "\n\n" +
       `Return ONLY JSON: {"meals":[{"name":"","source":"","sourceUrl":"","isNew":true,"isMeat":true,"isVegetarian":false,"hasLeftovers":false,"leftoverDays":0,"cookTime":30,"difficulty":"easy","isEasyCleanup":false,"description":"One sentence.","babyNote":"One tip.","usesFridgeItems":[]}]}\ndifficulty=easy/intermediate/advanced. ${remainingSlots} meals only.`;
   }
 
@@ -324,9 +338,13 @@ export function PlannerTab({
       : criteria.vegPreference === "include"
       ? "Include at least one vegetarian meal.\n"
       : "";
+    const hardBlock = sessionRejectedMeals.length > 0
+      ? `Do not suggest any of these dishes in any form, regardless of source, variation, or preparation style: ${sessionRejectedMeals.join(", ")}. If a dish has the same name or is clearly the same dish as one on this list, do not suggest it even if the source is different.\n\n`
+      : "";
     const n = rejectedMeals.length;
 
     return `Replace ${n} meal${n !== 1 ? "s" : ""} in this week's plan.\n\n` +
+      hardBlock +
       `Already in the plan — DO NOT suggest any of these or similar:\n${alreadyInPlan.map((name) => "- " + name).join("\n") || "none"}\n\n` +
       `Meals to replace:\n${rejectedSummary}\n\n` +
       `Take the rejection reasons seriously when choosing replacements.\n` +
@@ -338,8 +356,7 @@ export function PlannerTab({
       `Cooking pace: ${ambitionLevel.prompt}\n` +
       `Baby tips: ${criteria.babyFriendly ? "yes" : "no"}\n` +
       `Notes: ${criteria.notes || "none"}\n\n` +
-      `Global cuisine variety: Draw from a wide range. Avoid two meals from the same cuisine.\n\n` +
-      `Recipe sourcing: Prioritize iconic, celebrated versions. Vary sources.\n\n` +
+      SOURCING_INSTRUCTIONS + "\n\n" +
       `Return ONLY JSON: {"meals":[{"name":"","source":"","sourceUrl":"","isNew":true,"isMeat":true,"isVegetarian":false,"hasLeftovers":false,"leftoverDays":0,"cookTime":30,"difficulty":"easy","isEasyCleanup":false,"description":"One sentence.","babyNote":"One tip.","usesFridgeItems":[]}]}\n${n} meals only.`;
   }
 
@@ -379,7 +396,14 @@ export function PlannerTab({
   }
 
   function handleReject(id) {
-    setSuggestedMeals((prev) => prev.map((m) => m.id === id ? { ...m, reviewState: "rejected" } : m));
+    setSuggestedMeals((prev) => {
+      const updated = prev.map((m) => m.id === id ? { ...m, reviewState: "rejected" } : m);
+      const rejectedMeal = updated.find((m) => m.id === id);
+      if (rejectedMeal) {
+        setSessionRejectedMeals((r) => r.includes(rejectedMeal.name) ? r : [...r, rejectedMeal.name]);
+      }
+      return updated;
+    });
   }
 
   function handleUndoReview(id) {
@@ -440,6 +464,7 @@ export function PlannerTab({
   function handlePlanNewWeek() {
     setLockedMeals([]);
     setSuggestedMeals([]);
+    setSessionRejectedMeals([]);
     setStep(1);
     setPlanningNew(true);
     setError(null);
@@ -562,14 +587,18 @@ export function PlannerTab({
             })}
 
             {/* Grocery nudge */}
-            <div style={{ background: "#E1F5EE", border: "1px solid #99F6E4", borderRadius: 14, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#0D9488", fontFamily: FONT }}>Ready to build your grocery list?</p>
-              {onNavigateToGrocery && (
-                <button
-                  onClick={onNavigateToGrocery}
-                  style={{ background: "#0D9488", color: "#fff", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: 13, fontWeight: 700, fontFamily: FONT, cursor: "pointer", flexShrink: 0 }}
-                >Go →</button>
-              )}
+            <div style={{ marginTop: 8 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600, color: "#0D9488", fontFamily: FONT }}>Ready to build your grocery list?</p>
+              <button
+                onClick={async () => {
+                  if (onNavigateToGrocery) onNavigateToGrocery();
+                  if (buildGroceryFromPlan) {
+                    try { await buildGroceryFromPlan(() => {}); }
+                    catch { /* non-critical — user can trigger manually */ }
+                  }
+                }}
+                style={{ width: "100%", background: "#0D9488", color: "#fff", border: "none", borderRadius: 12, padding: "12px 20px", fontSize: 15, fontWeight: 700, fontFamily: FONT, cursor: "pointer", boxSizing: "border-box", letterSpacing: "-0.01em" }}
+              >Add this week's ingredients to my grocery list →</button>
             </div>
           </div>
         )}

@@ -117,6 +117,8 @@ export default function App() {
           setLastGenerated={setLastGenerated}
           addRecipe={addRecipe}
           markPlanReviewed={markPlanReviewed}
+          onNavigateToGrocery={() => navigateTo("grocery")}
+          buildGroceryFromPlan={buildGroceryFromPlan}
         />
       )}
       {tab === "recipes" && (
